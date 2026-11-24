@@ -108,7 +108,12 @@ fn a_cut_call_fails_finish_even_alongside_a_healthy_tool() {
 }
 
 #[test]
-fn invalid_arguments_with_a_native_item_stay_a_tool_shape_error_not_a_cut() {
+fn invalid_arguments_with_a_native_item_reach_the_tool_layer_instead_of_ending_the_turn() {
+    // Fork (2026-11-24): this used to raise `Invalid Rig tool call: arguments
+    // must be a JSON object`, which killed the whole turn. A native item means
+    // the provider stated the call complete, so the model meant something:
+    // publish the call and let the tool layer answer with a model-visible
+    // error the model can retry from.
     let mut tools = pending();
     let mut call = cut_call();
     call.native = Some(rig_core::completion::message::Native {
@@ -116,21 +121,21 @@ fn invalid_arguments_with_a_native_item_stay_a_tool_shape_error_not_a_cut() {
         fingerprint: rig_core::completion::message::Fingerprint::of(&serde_json::json!(
             {"type": "function_call", "call_id": "call_cut"}
         )),
-        // rig 0.46: no float baseline, no edit marker, no blob slot.
         baseline: None,
         edited: false,
         blob_slot: None,
     });
-    // A provider that DELIVERED an item with unparseable arguments is a
-    // tool-shape complaint, not a budget cut: it must raise immediately.
-    match tools.complete("1".into(), call) {
-        Ok(()) => panic!("a native item with invalid arguments must error, not cut"),
-        Err(ApiError::Stream(message)) => assert!(
-            message.contains("arguments must be a JSON object"),
-            "the native-item path keeps its own error, got: {message}"
-        ),
-        Err(other) => panic!("unexpected error class: {other:?}"),
-    }
+    tools
+        .complete("1".into(), call)
+        .expect("a delivered call is published, not rejected");
+    let events = tools.finish().expect("the turn continues");
+    let published = events.get("1").expect("the call is published");
+    assert!(
+        published
+            .iter()
+            .any(|event| matches!(event, codex_api::ResponseEvent::OutputItemDone(_))),
+        "the call is completed with its Done item: {published:?}"
+    );
 }
 
 #[test]
@@ -147,3 +152,102 @@ fn cut_mark_survives_without_any_argument_fragments() {
         "no fragments does not soften the cut contract"
     );
 }
+
+// ── Non-object arguments with a provider item (2026-11-24) ──────────────────
+//
+// A provider that sends arguments nothing can parse used to kill the whole
+// turn here (`Invalid Rig tool call: arguments must be a JSON object`), which
+// MiMo's chat wire produced intermittently. The call is now emitted instead:
+// the tool layer turns bad arguments into a `RespondToModel` error, so the
+// model retries inside the same turn.
+
+fn native_item() -> rig_core::completion::message::Native {
+    rig_core::completion::message::Native {
+        item: serde_json::json!({"type": "function_call", "name": "x"}),
+        fingerprint: rig_core::completion::message::Fingerprint::of(&"test-call"),
+        baseline: None,
+        edited: false,
+        blob_slot: None,
+    }
+}
+
+/// A call rig could not parse into an object, but which the provider did
+/// state complete (`native` is present).
+fn invalid_call(id: &str, tool: &str, raw: &str) -> ToolCall {
+    let function = ToolFunction::parse(ToolName::new(tool).expect("non-empty"), raw);
+    assert!(
+        function.invalid_arguments.is_some(),
+        "raw arguments {raw:?} must land in invalid_arguments"
+    );
+    let mut call = ToolCall::from_wire(id, function);
+    call.native = Some(native_item());
+    call
+}
+
+fn done_item(tools: &mut crate::response_tools::PendingTools, id: &str) -> codex_protocol::models::ResponseItem {
+    let mut events = tools.finish().expect("the turn continues");
+    let events = events.remove(id).expect("the call is published");
+    events
+        .into_iter()
+        .find_map(|event| match event {
+            codex_api::ResponseEvent::OutputItemDone(item) => Some(item),
+            _ => None,
+        })
+        .expect("a completed call is published with its Done item")
+}
+
+#[test]
+fn bare_patch_text_becomes_the_custom_tool_input() {
+    // apply_patch is a custom tool: its input *is* the payload, so text the
+    // provider sent outside JSON is exactly what the handler wants.
+    let mut tools = crate::response_tools::PendingTools::new(Arc::new(HashSet::from([
+        "apply_patch".to_string(),
+    ])));
+    let patch = "*** Begin Patch\n*** Add File: a.txt\n+hi\n*** End Patch";
+    tools
+        .complete("1".into(), invalid_call("c1", "apply_patch", patch))
+        .expect("a custom tool takes free-form input");
+    match done_item(&mut tools, "1") {
+        codex_protocol::models::ResponseItem::CustomToolCall { input, .. } => {
+            assert_eq!(input, patch, "the provider's bytes are preserved");
+        }
+        other => panic!("expected a custom tool call, got {other:?}"),
+    }
+}
+
+#[test]
+fn truncated_object_arguments_reach_the_tool_layer_as_the_provider_sent_them() {
+    // The output budget or a broken stream can leave a partial object; rig
+    // still flags it, and the model should hear about the shape it produced.
+    let mut tools = pending();
+    tools
+        .complete(
+            "1".into(),
+            invalid_call("c1", "shell", r#"{"command": ["echo""#),
+        )
+        .expect("a truncated call with a provider item is still a call");
+    match done_item(&mut tools, "1") {
+        codex_protocol::models::ResponseItem::FunctionCall { arguments, .. } => {
+            assert_eq!(arguments, r#"{"command": ["echo""#);
+        }
+        other => panic!("expected a function call, got {other:?}"),
+    }
+}
+
+#[test]
+fn bare_text_for_a_function_tool_is_passed_through_verbatim() {
+    // A function tool takes a JSON string. Passing the raw text through makes
+    // core's parse fail into `RespondToModel`, which the model can act on —
+    // strictly better than discarding the turn.
+    let mut tools = pending();
+    tools
+        .complete("1".into(), invalid_call("c1", "shell", "echo hi please"))
+        .expect("unparseable arguments are the tool layer's business");
+    match done_item(&mut tools, "1") {
+        codex_protocol::models::ResponseItem::FunctionCall { arguments, .. } => {
+            assert_eq!(arguments, "echo hi please");
+        }
+        other => panic!("expected a function call, got {other:?}"),
+    }
+}
+
