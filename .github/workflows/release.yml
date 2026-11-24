@@ -374,8 +374,15 @@ jobs:
       - name: Create archive
         id: create_archive
         shell: bash
+        # No env mapping on purpose: CI_HTTP_PROXY comes from the runner's own
+        # environment (see the Gitea workflow for the rationale).
         run: |
           set -euo pipefail
+          if [ -n "${CI_HTTP_PROXY:-}" ]; then
+            export https_proxy="${CI_HTTP_PROXY}" http_proxy="${CI_HTTP_PROXY}"
+            export no_proxy="localhost,127.0.0.1,192.168.0.0/16,10.0.0.0/8,.local"
+            echo "fetching bundled tools through ${CI_HTTP_PROXY}"
+          fi
           python3 "${GITHUB_WORKSPACE}/.github/scripts/package_nuwax_release.py" \
             --build-dir "${GITHUB_WORKSPACE}/codex-rs/target/${{ matrix.target }}/release" \
             --output-dir "${GITHUB_WORKSPACE}" \
