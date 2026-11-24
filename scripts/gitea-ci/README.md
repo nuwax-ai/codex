@@ -206,9 +206,39 @@ github.com 但 `crates.io` 返回 403、`chromium.googlesource.com` 超时。因
 | Rust 1.99.1 + musl target | `install-host-runner.sh` | `/data/nvme1/gitea-ci/toolchain/{cargo,rustup}` | rustc/cargo 1.99.1 |
 | Zig 0.14.0（musl 链接） | 同上 | `.../toolchain/zig` | 0.14.0 |
 | 任务超时 | `GITEA__actions__DEFAULT_ACTIONS_JOB_TIMEOUT=6h`（compose） | `app.ini` `[actions]` | aarch64-musl 单平台实测 ≈2h58m，默认 3h 无余量 |
-| crates 与 git 依赖（含 `rules_rust`/`nucleo`/`h3`/`mxc`/`rusty_v8`） | 有网机器 `cargo vendor`，整包搬过去 | `/data/nvme0/ci-cache/vendor/ci-vendor`（1.9G） | 目录源替代所有 registry |
+| crates 与 git 依赖（含 `rules_rust`/`nucleo`/`h3`/`mxc`/`rusty_v8`） | 有网机器 `cargo vendor`，整包搬过去；**每台 `linux-host` 各有一份**（见下表） | `/data/nvme0/ci-cache/vendor/ci-vendor`（1.9G） | 目录源替代所有 registry |
 | rusty_v8 归档 | `fetch-rusty-v8.sh`（校验 `third_party/v8` 清单） | `/data/nvme0/ci-cache/rusty_v8/<target>`（87M/3 target） | 校验 OK |
 | 构建缓存 | `CARGO_TARGET_DIR` 指到大盘 | `/data/nvme0/ci-cache/target/<target>` | — |
+
+**vendor 目录有三份，且它们互不共享**（2026-11-24 的教训）：`linux-host` 这个标签被
+三台机器同时认领，每台都有自己的缓存根，vendor 目录不跟随 `Cargo.lock` 自动更新：
+
+| runner 名 | 机器 | vendor 路径 | 构建用 CARGO_HOME |
+|---|---|---|---|
+| `linux-host` | 192.168.31.23 | `/data/nvme0/ci-cache/vendor/ci-vendor` | `/data/nvme1/gitea-ci/toolchain/cargo` |
+| `swufe-X99` | 192.168.31.41 | `/home/swufe/ci/cache/vendor/ci-vendor` | `/home/swufe/ci/data/toolchain/cargo` |
+| `linux-host-45` | 192.168.31.45 | `/home/soddy/ci/cache/vendor/ci-vendor` | `/home/soddy/ci/data/toolchain/cargo` |
+
+只修其中一台，另外两台上的 job 会以 `failed to select a version for the requirement
+rig-core = "=0.47"` 失败——而且三台谁接活是随机的，表现为“同一版本时好时坏”。
+
+**依赖一变就要三台一起刷**。用 `sync-vendor.sh`：
+
+```bash
+# 任意机器上都可跑：按 Cargo.lock 离线解析 vendor 目录，秒级，失败点名缺哪个 crate
+bash scripts/gitea-ci/sync-vendor.sh --repo codex-rs --vendor <vendor> --check
+# 在有网（或 cargo 缓存已含 pinned git rev）的机器上刷新；失败不动现有目录
+bash scripts/gitea-ci/sync-vendor.sh --repo codex-rs --vendor <vendor> \
+     --cargo-home <cargo-home> --toolchain 1.99.1
+```
+
+`release.yml` 的 Linux 预检会在编译前调用 `--check`，所以落后会**秒级失败并点名**，
+而不是白跑四十分钟。**在 CI 宿主上无法自动刷新**：`cargo vendor` 不认 git 源的
+`replace-with` 重定向，加载 lockfile 时就会为每个 git 依赖建 git 数据库，而
+`rusty_v8` 带约 20 个子模块（v8/LLVM/libc++），其一在 `chromium.googlesource.com`。
+实测：同配置下 `cargo metadata --offline` 3 秒解析成功，`cargo vendor` 仍开始克隆，
+在 CI 宿主上 15 分钟还没抓完子模块；在 cargo 缓存已含该 rev 的开发机上，同样
+`cargo vendor` 13 秒完成全部 1328 个 crate。
 
 **为什么必须 vendor**：`Cargo.lock` 把 `v8` pin 在 `seanh-oai/rusty_v8` 的 git rev 上，
 那个 rev 的 `.gitmodules` 指向 `chromium.googlesource.com`（本网络超时）。git URL 重写
