@@ -1626,6 +1626,23 @@ live-tests 两个依赖方），迁移集中在 HTTP 客户端层、错误分类
     （`NUWAX_OPENAI_EGRESS` 未设置时照样发出）：**已于 2026-11-23 修复**，根因与
     两道闸见「OpenAI 出站总闸」的补洞一条。
 
+### 7.x 厂商目录补 GLM-5.4（2026-11-24）
+
+智谱 2026-11-23 发布 **GLM-5.4**（Loop Transformer 旗舰，1M 上下文、128K 输出、原生视觉），
+但 fork 内置的 models.dev 快照生成于发布当天早些时候，目录里没有它——引擎会退化到
+"not in any catalog" 的占位元数据（**272,000 窗口**），自动压缩因此过早触发。
+
+- 在 `codex-rs/models-manager/vendor/catalog.json` 的 `zai` / `zai-coding-plan` /
+  `zhipuai` 三个 provider 下补 `glm-5.4`：`limit.context = 1000000`、
+  `limit.output = 131072`、`reasoning_options = effort [low, high, max]`、
+  `modalities.input = text/image/video/pdf`、`interleaved.field = reasoning_content`。
+  规格依据智谱官方说明（1M 上下文、128K 输出、视觉），输出上限另经 API 实测
+  （`max_tokens=131073` 被拒，错误提示上限 131072）。
+- 该文件是 `cargo xtask catalog sync` 的产物，下次同步若上游已收录 5.4 会自然覆盖；
+  若仍缺，按本条重新补齐。
+- 回归：`GLM-5.4` 在 chat / anthropic / responses 三条线均 `turn.completed`；无
+  fallback 元数据警告；声明档位后 `medium` 在请求发出前被拒并点名可用档位。
+
 ## 8. 版本与发布
 
 正式版本 `v0.18.14` → `f82730975` 已发布（2026-10-23）：
