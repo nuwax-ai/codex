@@ -4427,7 +4427,10 @@ impl App {
 ///     stored rollout for it;
 ///   * `list_turns is not supported yet` — the in-memory store a brand-new
 ///     thread uses has no turn listing (what the TUI hits right after startup,
-///     before the first message).
+///     before the first message);
+///   * `thread … is not materialized yet; … is unavailable before first user
+///     message` — the app server refuses turn reads until the thread's rollout
+///     exists, which is exactly a conversation with nothing to preserve.
 ///
 /// A transport error or an unknown failure is not an empty conversation: those
 /// keep the current session so history is never silently dropped.
@@ -4437,6 +4440,7 @@ fn is_empty_thread_read_error(error: &color_eyre::eyre::Error) -> bool {
         text.contains("no rollout found for thread id")
             || text.contains("thread not loaded:")
             || text.contains("list_turns is not supported yet")
+            || text.contains("is not materialized yet")
     })
 }
 
@@ -4457,6 +4461,13 @@ mod empty_thread_read_tests {
             "no rollout found for thread id thr_1",
             "thread not loaded: thr_1",
             "list_turns is not supported yet",
+            // The app server's own answer for a thread with no rollout yet;
+            // switching a brand-new conversation hits this before its first
+            // user message (2026-11-24).
+            "thread thr_1 is not materialized yet; thread/turns/list is unavailable before first \
+             user message",
+            "thread thr_1 is not materialized yet; includeTurns is unavailable before first user \
+             message",
         ] {
             assert!(
                 is_empty_thread_read_error(&read_error(cause)),

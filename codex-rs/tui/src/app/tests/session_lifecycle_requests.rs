@@ -5901,13 +5901,20 @@ async fn provider_error_preserves_partial_history_notice() -> Result<()> {
 /// Cross-vendor switch on a conversation that has no rollout yet.
 ///
 /// The route-override primitive is `thread/resume`, which the app server can
-/// only satisfy from a persisted conversation ("no rollout found"). A brand-new
-/// conversation has nothing to preserve, so the switch must start a new
-/// conversation on the target route instead of surfacing that error
-/// (reported from a real session: launch, pick another vendor, get
-/// "no rollout found for thread id …").
+/// only satisfy from a persisted conversation. A brand-new conversation has
+/// nothing to preserve, so the switch must start a new conversation on the
+/// target route instead of surfacing the read error (reported from a real
+/// session: launch, pick another vendor, get "no rollout found for thread id …").
+///
+/// Fork (2026-11-24): the app server answers an unmaterialized thread with
+/// "thread … is not materialized yet; thread/turns/list is unavailable before
+/// first user message" rather than "no rollout found", and that answer must
+/// count as the empty conversation it is — otherwise every cross-vendor switch
+/// on a brand-new session fails with "Could not read this conversation". A read
+/// that fails for any other reason still keeps the current session; see
+/// `empty_thread_read_tests`.
 #[tokio::test]
-async fn rehome_keeps_the_conversation_when_the_thread_read_fails() -> Result<()> {
+async fn rehome_starts_a_fresh_conversation_when_the_thread_has_no_rollout() -> Result<()> {
     let (mut app, _events, _ops) = make_test_app_with_channels().await;
     let home = tempdir()?;
     app.config.codex_home = home.path().to_path_buf().abs();
@@ -5972,23 +5979,22 @@ models = ["step-5-preview"]
     )
     .await?;
 
-    // Fork (2026-11-19): `thread/read` failing is NOT an empty conversation.
-    // The switch must leave the current session and model untouched (and ask to
-    // retry) instead of silently moving the user into a brand-new empty thread.
-    assert_eq!(
+    // Nothing was written yet, so there is nothing to preserve: the switch
+    // moves to the target route by starting a fresh conversation.
+    assert_ne!(
         app.chat_widget.thread_id(),
         Some(original_thread),
-        "a failed thread read must not silently start a new conversation"
+        "an empty conversation has no history to keep: the switch starts a new one"
     );
     assert_eq!(
         app.chat_widget.current_model(),
-        "mimo-fixture",
-        "the route must not be switched when the conversation could not be read"
+        "step-5-preview",
+        "the route must be switched for a conversation with nothing to preserve"
     );
     assert_eq!(
         recorded_params(&requests, "thread/start").len(),
-        starts_before_switch,
-        "no new conversation may be started on a read failure"
+        starts_before_switch + 1,
+        "exactly one new conversation carries the switch"
     );
 
     server.shutdown().await?;
