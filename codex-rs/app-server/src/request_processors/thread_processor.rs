@@ -126,6 +126,31 @@ struct ThreadRevertRuntimeSnapshot {
     client_mcp_extensions: ClientMcpExtensions,
 }
 
+/// Whether a loaded thread may be shut down so a resume can rebuild it from
+/// persisted history with the request's overrides.
+///
+/// A loaded thread with no subscribers that is not running is only a cache
+/// entry; rebuilding it is how a route override (a model switch) takes effect.
+/// A thread that ended a turn in a system error is in exactly that position —
+/// it is idle, and its error is why the operator is switching — so it must be
+/// rebuildable too, or a broken model configuration can never be switched away
+/// from: every turn fails, the error keeps the thread un-rebuildable, and the
+/// switch that would fix it is refused (2026-11-24).
+fn can_rebuild_loaded_thread(
+    accepts_direct_input: bool,
+    has_subscribers: bool,
+    loaded_status: ThreadStatus,
+    is_running: bool,
+) -> bool {
+    accepts_direct_input
+        && !has_subscribers
+        && matches!(
+            loaded_status,
+            ThreadStatus::Idle | ThreadStatus::SystemError
+        )
+        && !is_running
+}
+
 fn collect_resume_override_mismatches(
     request: &ThreadResumeParams,
     config_snapshot: &ThreadConfigSnapshot,
@@ -4783,13 +4808,15 @@ impl ThreadRequestProcessor {
                     matches!(existing_thread.agent_status().await, AgentStatus::Running);
 
                 // Parent-owned V2 children must not be rebuilt from public resume overrides.
-                if can_accept_direct_input(
-                    existing_thread.multi_agent_version(),
-                    &config_snapshot.session_source,
-                ) && !has_subscribers
-                    && matches!(loaded_status, ThreadStatus::Idle)
-                    && !is_running
-                {
+                if can_rebuild_loaded_thread(
+                    can_accept_direct_input(
+                        existing_thread.multi_agent_version(),
+                        &config_snapshot.session_source,
+                    ),
+                    has_subscribers,
+                    loaded_status,
+                    is_running,
+                ) {
                     // A loaded idle thread is only a cache entry. Shut it down
                     // before removing it so cold resume cannot duplicate a
                     // thread that timed out during shutdown.

@@ -1517,3 +1517,50 @@ mod thread_processor_behavior_tests {
         Ok(())
     }
 }
+
+/// A loaded thread is rebuilt for a resume override (a model switch) only when
+/// it is a cache entry. A thread whose last turn ended in a system error is one
+/// too — it is idle, and that error is why the operator switches — so refusing
+/// it would leave a broken model configuration with no way out (2026-11-24).
+#[test]
+fn an_idle_system_error_thread_is_rebuildable_for_a_model_switch() {
+    use super::can_rebuild_loaded_thread;
+
+    for status in [
+        codex_app_server_protocol::ThreadStatus::Idle,
+        codex_app_server_protocol::ThreadStatus::SystemError,
+    ] {
+        assert!(
+            can_rebuild_loaded_thread(
+                /*accepts_direct_input*/ true,
+                /*has_subscribers*/ false,
+                status.clone(),
+                /*is_running*/ false
+            ),
+            "{status:?} is an idle cache entry"
+        );
+    }
+
+    // Still not while another client can observe it, or while it is running.
+    assert!(!can_rebuild_loaded_thread(
+        true,
+        /*has_subscribers*/ true,
+        codex_app_server_protocol::ThreadStatus::SystemError,
+        false
+    ));
+    assert!(!can_rebuild_loaded_thread(
+        true,
+        false,
+        codex_app_server_protocol::ThreadStatus::Active {
+            active_flags: Vec::new()
+        },
+        true
+    ));
+    // A parent-owned child is never rebuilt from public overrides.
+    assert!(!can_rebuild_loaded_thread(
+        /*accepts_direct_input*/ false,
+        false,
+        codex_app_server_protocol::ThreadStatus::SystemError,
+        false
+    ));
+}
