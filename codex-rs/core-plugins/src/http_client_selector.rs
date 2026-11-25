@@ -1,3 +1,4 @@
+use codex_http_client::DestinationGuard;
 use codex_http_client::OutboundProxyPolicy;
 use codex_http_client::RequestBuilder;
 use codex_http_client::RouteAwareClientPool;
@@ -5,6 +6,7 @@ use codex_http_client::openai_egress_enabled;
 use http::Method;
 use std::fmt;
 use std::fmt::Debug;
+use std::sync::Arc;
 use url::Url;
 
 /// Builds requests whose URL is also used to resolve their outbound route.
@@ -73,10 +75,28 @@ impl fmt::Debug for OpenAiEgressGatedClientPool {
     }
 }
 
+impl OpenAiEgressGatedClientPool {
+    /// The initial-URL predicate, ready to ride every hop of one request.
+    ///
+    /// A mirror the operator configured can answer with a redirect to an
+    /// OpenAI-operated host; only a per-hop check keeps the gate's promise that
+    /// those names never reach a packet capture.
+    fn destination_guard(&self) -> DestinationGuard {
+        Arc::new(|url: &str| is_openai_operated_url(url).then(|| OPENAI_EGRESS_CLOSED.to_string()))
+    }
+}
+
 impl HttpClientSelector for OpenAiEgressGatedClientPool {
     fn request(&self, method: Method, url: &str) -> RequestBuilder {
-        if self.egress_enabled || !is_openai_operated_url(url) {
+        if self.egress_enabled {
             return self.inner.request(method, url);
+        }
+        if !is_openai_operated_url(url) {
+            // Allowed here, but the hop that matters may be a redirect target.
+            return self
+                .inner
+                .request(method, url)
+                .destination_guard(self.destination_guard());
         }
         tracing::debug!(
             host = Url::parse(url)

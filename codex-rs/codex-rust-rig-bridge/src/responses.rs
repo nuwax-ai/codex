@@ -199,11 +199,6 @@ async fn stream_responses_via_rig_inner(
     // implementations likely share the gap), while the moved shape is valid
     // everywhere including OpenAI-official. Providers can opt out with
     // `responses_trailing_tool_result_user_turn = false`.
-    if api_provider.trailing_tool_result_user_turn.unwrap_or(true) {
-        downgrade_original_detail_to_auto(&mut wire_request.input);
-        move_tool_result_arrays_to_user_turns(&mut wire_request.input);
-        append_trailing_tool_result_user_turn(&mut wire_request.input);
-    }
     // Fork (nuwax-codex, 2026-11-23): many gateway `/v1/responses`
     // implementations serve only the function half of the Responses tool model
     // and reject `type: "custom"` outright — MiMo token-plan answers `400
@@ -216,9 +211,11 @@ async fn stream_responses_via_rig_inner(
     // Chat/Anthropic wires already send (one `input` string, grammar in the
     // description). `NUWAX_FREEFORM_TOOLS=1` (alias `CODEX_FREEFORM_TOOLS`)
     // keeps the verbatim custom declaration for gateways that implement it.
-    if !freeform_tools_enabled()? {
-        downgrade_custom_tools(&mut wire_request)?;
-    }
+    prepare_responses_input(
+        &mut wire_request,
+        /*freeform_tools*/ freeform_tools_enabled()?,
+        api_provider.trailing_tool_result_user_turn.unwrap_or(true),
+    )?;
 
     let model = request.model.clone();
     tracing::info!(
@@ -705,6 +702,117 @@ fn parse_freeform_tools_flag(text: &str) -> Result<bool, String> {
             "{other:?} is not a boolean; use 1/0, true/false, yes/no, or on/off"
         )),
     }
+}
+
+/// Applies the request-local repairs this fork adds for stricter
+/// `/v1/responses` gateways, in the only order that keeps them consistent.
+///
+/// 1. Custom tool HISTORY becomes function history when the tool model is
+///    function-only ([`downgrade_custom_tool_history`]).
+/// 2. The trailing-tool-result repair runs next, because it keys on
+///    `function_call_output`: a custom result converted in step 1 is one by
+///    then, while a custom result left verbatim (free-form wire) is not a
+///    trailing tool result for that repair's purposes either way.
+/// 3. Custom tool DECLARATIONS become function declarations last
+///    ([`downgrade_custom_tools`]), so the request never advertises a
+///    different tool model than the history it carries.
+fn prepare_responses_input(
+    request: &mut ResponsesApiRequest,
+    freeform_tools: bool,
+    repair_trailing_tool_result: bool,
+) -> Result<(), ApiError> {
+    if !freeform_tools {
+        let downgraded = downgrade_custom_tool_history(&mut request.input);
+        if downgraded > 0 {
+            tracing::debug!(
+                downgraded_custom_history_items = downgraded,
+                "responses wire rewrote custom tool history as function history \
+                 (NUWAX_FREEFORM_TOOLS=1 keeps it verbatim)"
+            );
+        }
+    }
+    if repair_trailing_tool_result {
+        downgrade_original_detail_to_auto(&mut request.input);
+        move_tool_result_arrays_to_user_turns(&mut request.input);
+        append_trailing_tool_result_user_turn(&mut request.input);
+    }
+    if !freeform_tools {
+        downgrade_custom_tools(request)?;
+    }
+    Ok(())
+}
+
+/// Rewrites the request's custom-tool HISTORY into the function shapes the
+/// downgraded declarations promise, leaving every other item untouched.
+///
+/// [`downgrade_custom_tools`] only rewrites declarations, so a thread that
+/// recorded `custom_tool_call` items — on the Chat/Anthropic wire, which keeps
+/// the custom declaration and restores the call as such, or under
+/// `NUWAX_FREEFORM_TOOLS=1` — would otherwise replay `type: "custom_tool_call"`
+/// to a gateway that was told every tool is a function. A gateway that serves
+/// only the function half rejects that history, exactly as it rejects the
+/// declaration (MiMo token-plan:
+/// `custom tools require MiMo freeform Responses lite mode`).
+///
+/// The wrapper matches [`crate::request_tools::custom_input_schema`]: the
+/// free-form text rides one `input` string, which is what the downgraded
+/// declaration tells the model to produce. `call_id` is preserved so the
+/// paired output still resolves, and the repair helpers that run after this
+/// (`move_tool_result_arrays_to_user_turns`, `append_trailing_tool_result_user_turn`)
+/// see a plain `function_call_output` for a converted result.
+fn downgrade_custom_tool_history(input: &mut [codex_protocol::models::ResponseItem]) -> usize {
+    use codex_protocol::models::ResponseItem;
+
+    let mut downgraded = 0usize;
+    for item in input {
+        match item {
+            ResponseItem::CustomToolCall {
+                encrypted_content,
+                id,
+                status,
+                call_id,
+                name,
+                namespace,
+                input: freeform_input,
+                internal_chat_message_metadata_passthrough,
+            } => {
+                let arguments = serde_json::json!({ "input": freeform_input }).to_string();
+                *item = ResponseItem::FunctionCall {
+                    encrypted_content: encrypted_content.take(),
+                    status: status.take(),
+                    id: id.take(),
+                    name: name.clone(),
+                    namespace: namespace.clone(),
+                    arguments,
+                    encrypted_function_args: None,
+                    call_id: call_id.clone(),
+                    internal_chat_message_metadata_passthrough:
+                        internal_chat_message_metadata_passthrough.take(),
+                };
+                downgraded += 1;
+            }
+            ResponseItem::CustomToolCallOutput {
+                id,
+                call_id,
+                name,
+                output,
+                internal_chat_message_metadata_passthrough,
+            } => {
+                *item = ResponseItem::FunctionCallOutput {
+                    id: id.take(),
+                    call_id: Some(call_id.clone()),
+                    name: name.clone(),
+                    namespace: None,
+                    output: output.clone(),
+                    internal_chat_message_metadata_passthrough:
+                        internal_chat_message_metadata_passthrough.take(),
+                };
+                downgraded += 1;
+            }
+            _ => {}
+        }
+    }
+    downgraded
 }
 
 /// Rewrites every `type: "custom"` tool declaration into the function wrapper

@@ -1682,6 +1682,132 @@ live-tests 两个依赖方），迁移集中在 HTTP 客户端层、错误分类
 suffix_kib=…`，配合 `codex_core::compact` 的 `migration compaction` 日志即可判断恢复后
 是否会立刻压缩。
 
+### 7.x 恢复用量边界要跟着回滚/裁剪走（2026-11-25 复审修复）
+
+上一节（2026-11-24）把恢复用量改成「报告 + 边界之后估算」，边界取自「报告被重放时
+的条数」。这个条数只在表面形状不变时才有意义：**回滚**和 **surface replacement**
+（窗口降档）都会改写表面，让旧条数指错条目。结果是边界越过实际覆盖范围，报告从没
+测过的条目被当成「已计量」跳过估算（静默低估，压缩触发偏晚）。
+
+修复（`rollout_reconstruction.rs`）在边界会失真的位置就地重算，按**条目本身**而不是
+按长度：
+
+- 回滚不只是截尾。`drop_last_n_user_turns` 还会按输入接受顺序移除「回答被回滚输入」
+  的助手消息/工具调用——它们可能排在切点**之前**——也会删掉内容被清空的 developer
+  消息。于是「报告之后才到的条目」能滑进原本已计量的范围。现在用
+  `drop_last_n_user_turns_tracking_prefix(n, tracked)`：回滚时新旧表面都在手上，逐项
+  对齐，返回「前 `tracked` 项里仍按原顺序留在表面最前面的有多少」，边界取这个数。
+  对不上就停在那儿（宁可多估，也不漏估）。
+- 裁剪：`apply_active_surface_replacement` 回报「裁剪前条数 / 保留起点 / 是否种了
+  摘要 / 记录在后缀里的位置」，边界换算成「保留尾部里已被计量的前缀」。
+- **摘要的 `+1` 只在报告晚于裁剪记录时成立**：回放是先重放完整个后缀、最后才裁剪，
+  所以「报告被重放时」的表面其实是裁剪前的；只有写在裁剪记录**之后**的报告，在真实
+  会话里才见过那条种入的摘要。更早的报告测的是未裁剪的表面，摘要对它是新内容。
+- 后缀里若重放了一条会整体重建表面的压缩，边界直接作废（`None`），回落到既有保守
+  路径。
+
+**验证**：6 例——简单截尾回滚 → `Some(2)`；切点前也被移除的回滚 → `Some(2)`（修前
+`Some(3)`）；无摘要裁剪 → `Some(1)`；报告早于裁剪、种了摘要 → `Some(1)`（修前
+`Some(2)`）；报告晚于裁剪 → `Some(2)`；端到端恢复后总用量 = 报告 + 回滚后新输入。
+变异验证：把逐项对齐换回长度截断、或无条件给摘要 `+1`，对应用例分别变红。
+
+### 7.x Responses 线的 custom 工具历史（2026-11-25 复审修复）
+
+`NUWAX_FREEFORM_TOOLS` 默认关闭时，`downgrade_custom_tools` 只改写**声明**（把
+`apply_patch` 从 `type: "custom"` 变成 function 包装），历史里的
+`custom_tool_call` / `custom_tool_call_output` 原样发出。只实现 function 半边的网关
+（MiMo token-plan：`custom tools require MiMo freeform Responses lite mode`）会连
+历史一起拒。
+
+触发面比"同进程内切厂商"更宽：`freeform_tools_enabled()` 是进程级 env，而 **Chat /
+Anthropic 线保留 custom 声明**并把返回的调用还原成 `CustomToolCall` 落库——所以任何
+「先在 chat 线上跑过、再切到 responses 网关」的同一线程都会命中。
+
+现在 `prepare_responses_input` 一次性决定整条线的工具模型，顺序固定：
+① 历史成对改写（保留 `call_id`，自由文本装进 `{"input": …}` 包装，与
+`custom_input_schema` 一致）→ ② 尾部 tool-result 修补（它只认
+`function_call_output`，所以改写必须在它之前，否则改写出来的结果拿不到那条补位用户
+轮）→ ③ 声明改写。
+
+**验证**：新增 2 例（历史成对改写 + 尾部补位照旧生效；纯 function 历史字节不变）。
+变异验证：关掉历史改写、或把②①顺序对调，第一条用例都变红（后者报 3≠4）。
+
+### 7.x 插件出站闸按跳检查（2026-11-25 复审修复）
+
+`NUWAX_OPENAI_EGRESS` 关闭时的闸门原本只判初始 URL（`RequestBuilder::refused`），
+而重定向由传输层自己跟：运营商配一个内网镜像，镜像 302 到 OpenAI 域名，这一跳只会
+过通用网络策略。闸门的承诺是「抓包里不出现这些域名」，那个空档正好把它破掉。
+
+现在 `RequestBuilder` 可以挂一个 `DestinationGuard`（每跳判一次，命中即
+`Build(reason)`，在解析路由/域名之前返回），插件池在闸门关闭时把同一个
+`is_openai_operated_url` 判定挂上去。
+
+**guard 决定「谁来检查每一跳」，不决定「跟不跟重定向」**：
+
+- 默认出站策略 `ReqwestDefault` 下传输层自己跟重定向、闸门看不到第二跳，所以挂了
+  guard 的请求在**会跟重定向的客户端**上改编到手工重定向路径
+  （`follows_redirects_manually = 原判定 || (guard.is_some() && 客户端允许重定向)`）。
+  路由缓存键随之从 `route` 变成 `(route, 是否手工重定向)`，两种客户端不互相复用。
+- 用 `without_redirects()` 构建的池本就把 `302` 原样交给调用方、不会开第二跳，没有
+  可检查的东西：保持原样（复审第二轮指出，初版会在这里报 `Build` 错误并吞掉响应）。
+- guard 挂到固定客户端（非路由池）上时传输层无从回调，**明确报错**而不是静默不生效。
+- Windows 代理认证重试路径（`retry_windows_proxy`）透传请求级的重定向判定，不靠
+  「带 rustls 缓存的池一定是手工路径」这个隐含前提。
+
+**验证**：http-client 3 例（对照组证明不带 guard 时会真的连第二跳、带 guard 时第二跳
+连接数为 0；`without_redirects` 池挂 guard 仍原样返回 `302`；固定客户端挂 guard
+报错）；插件侧 1 例（本机镜像 302 到 `chatgpt.com`，闸门关闭 →
+`Build(OPENAI_EGRESS_CLOSED)`，镜像侧只收到第一跳）。变异验证：去掉「guard 强制手工
+重定向」、去掉每跳检查、让 guard 无视客户端的重定向设置、或让插件池不再挂 guard，
+各自变红。
+
+**Windows 实测记录（2026-11-25）**：macOS 上 `#[cfg(windows)]` 分支既不编译也不运行，
+所以专门在一台 Windows 11（rustc 1.99.1-x86_64-pc-windows-msvc、`rust-lld`）上编译并
+跑了 http-client 测试：HEAD `168 passed / 0 failed`，本次改动后
+`171 passed / 0 failed`（多出的 3 项即新增的 guard 用例）。两点复现条件：
+
+- 用的是 `cargo test -p codex-http-client --lib`，不是 nextest——nextest 要先对整个
+  workspace 做 metadata，需要全部 8 个 git 依赖；那台机器 git 走 schannel，到 github.com
+  的 TLS 握手失败，拉不下来。http-client 自己的依赖闭包里没有 git 来源的 crate，所以
+  把根 `Cargo.toml` 的 `members` 临时裁成 `http-client` + `utils/rustls-provider`
+  （去掉 `[patch]` 表）即可，其余文件原样。
+- 构建要挂在保持打开的 ssh 会话里：用 `nohup` 脱离 MSYS 伪终端后，会话一断子进程就
+  起不来（`rustc -vV` 报 `0xC0000142 STATUS_DLL_INIT_FAILED`）。
+
+### 7.x 恢复诊断改为流式计数（2026-11-25 复审修复）
+
+`resumed a thread from its rollout` 那三个字节数原本用 `serde_json::to_vec(...).len()`
+算，等于为一个长度再分配一整份序列化缓冲，而且是在 `tracing::info!` **之前**作为局部
+变量求值——关掉 INFO 也照跑。带内联截图的长会话在恢复瞬间可能几十 MB。
+
+现在整段计算包在 `tracing::enabled!(… INFO)` 里，并且用只计字节、不留缓冲的 writer
+（`json_size`）。新增 1 例验证它与 `to_vec().len()` 逐字节一致（诊断单位不能悄悄变）。
+
+### 7.x Doctor 脱敏的词边界与无冒号标签（2026-11-25 复审修复）
+
+`3ca8abbaa2` 想让 `xiaomi-token-plan-cn` 这类 plan id 不被当成凭据，但
+`contains_secret_key` 的「词字符」只认 `[A-Za-z0-9_]`，连字符仍算词边界，于是 MiMo
+token-plan 的上下文窗口整行被遮成 `effective context window: <redacted>`。
+
+现在：连字符在**散文里的标识符**中算词字符（`xiaomi-token-plan-cn` 是一个名字），但在
+**路径成分**里不算（`/tmp/doctor-secret-sqlite/...` 这类行只说明位置，而路径段正是
+粘贴凭据最爱藏的地方，仍然整行遮盖）。
+
+**保留标签的边界（复审第二轮修正）**：初版为了救活 `3ca8abbaa2` 里那条「无冒号也
+保留标签」的断言，把 key 名之前的文字当标签保留——可无冒号的行是自由文本（TOML
+解析错误会原样回显出错的源码行），那段文字里恰好会带着凭据。现在：
+
+- `name: value` 形态的行保留 `name`，但 `name` 也按 token 过一遍凭据识别
+  （`sk-…`、`ghp_…`、AWS key、`password=…` 这类），命中即遮。
+- 没有 `": "` 的行整行 `<redacted>`。那条断言的期望改为 `<redacted>`：原期望本身
+  不安全，doctor 的生产代码里也没有任何一条无冒号详情依赖标签。
+
+**注意**：`redact_detail_distinguishes_database_paths_from_field_labels`
+（上游 `3b7a8520ef`）与 `redact_detail_does_not_treat_plan_provider_ids_as_secrets`
+（`3ca8abbaa2`）在 HEAD 上都是红的；上面的「路径 vs 散文」区分是让两条同时成立的
+最小规则，另有 1 条断言把路径例外钉住。doctor 全集另有 10 条既有失败（品牌文案
+快照、终端/环境相关），与脱敏无关，基线对照过。
+
 ## 8. 版本与发布
 
 正式版本 `v0.18.14` → `f82730975` 已发布（2026-10-23）：

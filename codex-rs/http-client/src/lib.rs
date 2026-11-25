@@ -80,6 +80,7 @@ pub use crate::request::Request;
 pub use crate::request::RequestBody;
 pub use crate::request::RequestCompression;
 pub use crate::request::Response;
+pub use crate::request_builder::DestinationGuard;
 pub use crate::request_builder::RequestBuilder;
 pub use crate::response::HttpResponse;
 pub use crate::retry_after::RetryAfter;

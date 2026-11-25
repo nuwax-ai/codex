@@ -910,12 +910,43 @@ pub(super) fn redact_detail(detail: &str) -> String {
     {
         // make sure that windows drives in paths are not matches C:/ if they are a first token
         detail.split_once(": ").map_or_else(
+            // Free-form text has no label to keep, and whatever sits in front of
+            // the key name is exactly where a pasted credential would be — a
+            // TOML parse error echoes the offending source line verbatim.
             || "<redacted>".to_string(),
-            |(name, _)| format!("{name}: <redacted>"),
+            |(name, _)| format!("{}: <redacted>", redact_label_tokens(name)),
         )
     } else {
         redact_urls(detail)
     }
+}
+
+/// A kept `name:` label with every credential-shaped token masked.
+///
+/// The label is text the operator may have typed, so a key pasted in front of
+/// the field name would otherwise be printed back. Ordinary words — with their
+/// punctuation — are left alone; only what [`redact_identifier`] would refuse
+/// to echo is replaced.
+fn redact_label_tokens(label: &str) -> String {
+    label
+        .split_inclusive(char::is_whitespace)
+        .map(|token| {
+            // A word keeps the punctuation it was written with; only the word
+            // itself is judged.
+            let core = token.trim_matches(|c: char| {
+                c.is_whitespace()
+                    || matches!(
+                        c,
+                        '.' | ',' | ';' | ':' | '(' | ')' | '[' | ']' | '"' | '\''
+                    )
+            });
+            if core.is_empty() || redact_identifier(core) == core {
+                token.to_string()
+            } else {
+                token.replacen(core, "<redacted>", 1)
+            }
+        })
+        .collect()
 }
 
 /// Whether `text` names the secret key `key` as a word, not merely as a
@@ -923,12 +954,60 @@ pub(super) fn redact_detail(detail: &str) -> String {
 /// `max_tokens` count would otherwise match the `token` key and redact a
 /// whole diagnostic line that carries no credential.
 fn contains_secret_key(text: &str, key: &str) -> bool {
-    text.match_indices(key).any(|(at, _)| {
-        let before = text[..at].chars().next_back();
-        let after = text[at + key.len()..].chars().next();
-        let is_word = |c: char| c.is_ascii_alphanumeric() || c == '_';
-        !before.is_some_and(is_word) && !after.is_some_and(is_word)
-    })
+    text.match_indices(key)
+        .any(|(at, _)| is_secret_key_at(text, key, at))
+}
+
+/// One candidate `key` occurrence starting at `at`: does it stand as its own
+/// word?
+///
+/// A word character glues the key into a longer identifier (`max_tokens`), and
+/// so does a hyphen when a word character sits on its far side
+/// (`xiaomi-token-plan-cn` is one name, not a `token`). A path component is the
+/// exception: there a hyphenated segment still names a file, so the key keeps
+/// matching and the line is masked.
+fn is_secret_key_at(text: &str, key: &str, at: usize) -> bool {
+    let in_path_segment = path_segment_contains(text, at);
+    !glued_to_word(text, /*at*/ at, /*left*/ true, in_path_segment)
+        && !glued_to_word(text, at + key.len(), /*left*/ false, in_path_segment)
+}
+
+fn is_word_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_'
+}
+
+/// Whether the character touching the key at `at` continues the same word on
+/// that side.
+fn glued_to_word(text: &str, at: usize, left: bool, in_path_segment: bool) -> bool {
+    if left {
+        let Some(before) = text[..at].chars().next_back() else {
+            return false;
+        };
+        if before == '-' {
+            return !in_path_segment
+                && text[..at - 1].chars().next_back().is_some_and(is_word_char);
+        }
+        is_word_char(before)
+    } else {
+        let Some(after) = text[at..].chars().next() else {
+            return false;
+        };
+        if after == '-' {
+            return !in_path_segment && text[at + 1..].chars().next().is_some_and(is_word_char);
+        }
+        is_word_char(after)
+    }
+}
+
+/// Whether the `word-and-hyphen` run around `at` is delimited like a
+/// filesystem path component (`/tmp/...`, `C:\...`).
+fn path_segment_contains(text: &str, at: usize) -> bool {
+    let run_start = text[..at]
+        .char_indices()
+        .rev()
+        .find(|(_, c)| !is_word_char(*c) && *c != '-')
+        .map_or(0, |(index, c)| index + c.len_utf8());
+    matches!(text[..run_start].chars().next_back(), Some('/' | '\\'))
 }
 
 fn redact_identifier(identifier: &str) -> &str {
@@ -1986,6 +2065,12 @@ Run nuwax-harness doctor without --summary for detailed diagnostics.
             redact_detail("catalog limits: context=1048576 output=131072"),
             "catalog limits: context=1048576 output=131072"
         );
+        // The hyphen joins a path segment too, but there the segment can name a
+        // credential file and the line carries nothing else worth keeping.
+        assert_eq!(
+            redact_detail("/tmp/doctor-secret-sqlite/logs_2.sqlite"),
+            "<redacted>"
+        );
     }
 
     #[test]
@@ -1995,9 +2080,26 @@ Run nuwax-harness doctor without --summary for detailed diagnostics.
             redact_detail("bearer token: sk-live-value"),
             "bearer token: <redacted>"
         );
+        // A line without a `name: value` split is free-form text — a TOML parse
+        // error echoing the offending source line, for one — so everything in
+        // front of the key name is exactly where a pasted credential sits.
+        // Nothing of it is kept (review 2026-11-25, P2).
+        for detail in [
+            "password=hunter2 api_key missing for provider gw",
+            "provider api_key is configured for gw",
+            "sk-live-SYNTHETIC_CREDENTIAL was rejected by the api_key check",
+        ] {
+            assert_eq!(redact_detail(detail), "<redacted>", "{detail}");
+        }
+        // A structured line keeps its label, and a credential-shaped token
+        // inside that label is still masked.
         assert_eq!(
-            redact_detail("provider api_key is configured for gw"),
-            "provider api_key: <redacted>"
+            redact_detail("provider sk-live-SYNTHETIC_CREDENTIAL: api_key rejected"),
+            "provider <redacted>: <redacted>"
+        );
+        assert_eq!(
+            redact_detail("mimo token-plan: api_key is set"),
+            "mimo token-plan: <redacted>"
         );
     }
 

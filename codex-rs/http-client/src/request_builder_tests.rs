@@ -133,3 +133,27 @@ async fn a_refused_request_never_reaches_a_transport() {
         "{error:?}"
     );
 }
+
+/// A fixed client's transport follows redirects itself, so a guard attached to
+/// one could not cover its hops. Saying so beats sending the request with the
+/// policy silently unenforced.
+#[tokio::test]
+async fn a_destination_guard_on_a_fixed_client_is_refused_not_ignored() {
+    let client = HttpClientBuilder::new()
+        .build_direct()
+        .expect("client should build");
+    let HttpClientBackend::Direct(transport) = &client.backend else {
+        panic!("client should use direct transport");
+    };
+    let error = RequestBuilder::direct(transport, Method::GET, "https://example.com/")
+        .destination_guard(std::sync::Arc::new(|_url: &str| {
+            Some("this destination is refused".to_string())
+        }))
+        .send()
+        .await
+        .expect_err("a guard without a per-hop hook must not be accepted");
+    assert!(
+        error.to_string().contains("needs a routed transport"),
+        "the refusal has to name the reason: {error}"
+    );
+}

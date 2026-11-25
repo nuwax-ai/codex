@@ -58,7 +58,7 @@ async fn default_pool_does_not_retry_a_native_tls_protocol_failure() {
         HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
         ClientRouteClass::Other,
     );
-    use_native_tls_for_direct_route(&pool);
+    use_native_tls_for_direct_route(&pool).await;
     let request = reqwest::Request::new(
         Method::POST,
         reqwest::Url::parse(&url).expect("valid HTTPS URL"),
@@ -90,7 +90,7 @@ async fn retries_a_native_tls_protocol_failure_once_with_rustls() {
         ClientRouteClass::Other,
     )
     .with_tls_backend_fallback();
-    use_native_tls_for_direct_route(&pool);
+    use_native_tls_for_direct_route(&pool).await;
     let destination = reqwest::Url::parse(&url).expect("valid HTTPS URL");
     let mut request = reqwest::Request::new(Method::POST, destination.clone());
     *request.body_mut() = Some(Bytes::from_static(b"mcp-initialize").into());
@@ -132,12 +132,14 @@ async fn retries_a_native_tls_failure_after_another_request_caches_rustls() {
         ClientRouteClass::Other,
     )
     .with_tls_backend_fallback();
-    use_native_tls_for_direct_route(&pool);
+    use_native_tls_for_direct_route(&pool).await;
     let destination = reqwest::Url::parse(&url).expect("valid HTTPS URL");
     let (route, native_client, selected_tls_backend) = pool
-        .client_for_url_with_resolver(destination.as_str(), |_| async {
-            Ok(OutboundProxyRoute::Direct)
-        })
+        .client_for_url_with_resolver(
+            destination.as_str(),
+            |_| async { Ok(OutboundProxyRoute::Direct) },
+            pool.follows_redirects_manually(),
+        )
         .await
         .expect("native TLS client should resolve");
     assert_eq!(selected_tls_backend, SelectedTlsBackend::TransportDefault);
@@ -149,7 +151,7 @@ async fn retries_a_native_tls_failure_after_another_request_caches_rustls() {
         .await
         .expect_err("native TLS handshake should fail");
     let rustls_client = pool
-        .rustls_client_for_route(&route)
+        .rustls_client_for_route(&route, pool.follows_redirects_manually())
         .expect("rustls fallback client should build");
     pool.rustls_clients
         .as_ref()
@@ -166,6 +168,7 @@ async fn retries_a_native_tls_failure_after_another_request_caches_rustls() {
             None,
             error,
             /*timeout_deadline*/ None,
+            pool.follows_redirects_manually(),
         )
         .await
         .expect_err("both TLS handshakes should be rejected");
@@ -194,7 +197,10 @@ async fn does_not_retry_a_cached_rustls_tls_protocol_failure() {
     .with_tls_backend_fallback();
     let destination = reqwest::Url::parse(&url).expect("valid HTTPS URL");
     let rustls_client = pool
-        .rustls_client_for_route(&OutboundProxyRoute::Direct)
+        .rustls_client_for_route(
+            &OutboundProxyRoute::Direct,
+            /*follows_redirects_manually*/ false,
+        )
         .expect("rustls fallback client should build");
     pool.rustls_clients
         .as_ref()
@@ -228,7 +234,7 @@ async fn successful_rustls_fallback_replays_the_request_and_reuses_the_destinati
         ClientRouteClass::Other,
     )
     .with_tls_backend_fallback();
-    use_native_tls_for_direct_route(&pool);
+    use_native_tls_for_direct_route(&pool).await;
     let destination = reqwest::Url::parse(&url).expect("valid HTTPS URL");
     let existing_destination =
         reqwest::Url::parse("https://another-mcp.example.com/mcp").expect("valid HTTPS URL");
@@ -294,7 +300,7 @@ async fn retries_a_tls_protocol_failure_when_request_url_contains_certificate_ma
         ClientRouteClass::Other,
     )
     .with_tls_backend_fallback();
-    use_native_tls_for_direct_route(&pool);
+    use_native_tls_for_direct_route(&pool).await;
     let mut destination = reqwest::Url::parse(&url).expect("valid HTTPS URL");
     destination.set_path("/certificate/hostname/expired/revoked/mcp");
     let request = reqwest::Request::new(Method::POST, destination);
@@ -326,7 +332,7 @@ async fn does_not_retry_a_non_replayable_streaming_request() {
         ClientRouteClass::Other,
     )
     .with_tls_backend_fallback();
-    use_native_tls_for_direct_route(&pool);
+    use_native_tls_for_direct_route(&pool).await;
     let mut request = reqwest::Request::new(
         Method::POST,
         reqwest::Url::parse(&url).expect("valid HTTPS URL"),
@@ -361,7 +367,14 @@ async fn does_not_retry_a_non_replayable_streaming_request() {
     );
 }
 
-fn use_native_tls_for_direct_route(pool: &RouteAwareClientPool) {
+/// Pins the Direct route to a native-TLS client built by this test.
+///
+/// The entry is written under the key a request on this pool looks up — the
+/// route plus the pool's own redirect behavior — and that lookup is replayed
+/// once to prove it lands there. A miss would go unnoticed: the pool would
+/// build a second client and the test would still pass without ever exercising
+/// the native-TLS attempt it set up.
+async fn use_native_tls_for_direct_route(pool: &RouteAwareClientPool) {
     // Start with reqwest's default native backend even when the environment supplies a CA bundle.
     let client = reqwest::Client::builder()
         .no_proxy()
@@ -369,9 +382,29 @@ fn use_native_tls_for_direct_route(pool: &RouteAwareClientPool) {
         .max_tls_version(NATIVE_TLS_TEST_VERSION)
         .build()
         .expect("native TLS client should build");
+    let manual_redirects = pool.follows_redirects_manually();
     pool.clients.lock().expect("client cache lock").insert(
-        OutboundProxyRoute::Direct,
+        (OutboundProxyRoute::Direct, manual_redirects),
         TransportClient::new(client, RequestLogging::Enabled, http::HeaderMap::new()),
+    );
+    let (_, _, backend) = pool
+        .client_for_url_with_resolver(
+            "https://native-tls-fixture.invalid/",
+            |_| async { Ok(OutboundProxyRoute::Direct) },
+            manual_redirects,
+        )
+        .await
+        .expect("the seeded client should resolve");
+    assert_eq!(backend, SelectedTlsBackend::TransportDefault);
+    let clients = pool.clients.lock().expect("client cache lock");
+    assert_eq!(
+        clients.len(),
+        1,
+        "the request path must find the seeded client instead of building another one"
+    );
+    assert!(
+        clients.contains_key(&(OutboundProxyRoute::Direct, manual_redirects)),
+        "the fixture has to sit under the key the request looks up"
     );
 }
 

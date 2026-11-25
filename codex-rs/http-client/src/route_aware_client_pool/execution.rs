@@ -20,6 +20,7 @@ use crate::RouteFailureClass;
 #[cfg(windows)]
 use crate::client::TransportClient;
 use crate::client::apply_default_headers;
+use crate::request_builder::DestinationGuard;
 use crate::request_draft::RequestDraft;
 use crate::route_aware_redirect::MAX_REDIRECTS;
 use crate::route_aware_redirect::insert_referer;
@@ -46,17 +47,51 @@ impl RouteAwareClientPool {
         &self,
         request: RequestDraft,
     ) -> BoxFuture<'_, Result<HttpResponse, RouteAwareRequestError>> {
-        self.send_with_resolver(request, |request_url| {
-            self.http_client_factory
-                .resolve_proxy_route_async(request_url)
-        })
+        self.send_guarded(request, None)
+    }
+
+    /// [`Self::send`] with a policy that refuses destinations hop by hop.
+    ///
+    /// While a guard is attached, a client that follows redirects has them
+    /// followed by the pool instead, because a transport-level redirect never
+    /// reaches this policy. A client built without redirects is left alone: it
+    /// never opens another hop for the guard to check.
+    pub(crate) fn send_guarded(
+        &self,
+        request: RequestDraft,
+        destination_guard: Option<DestinationGuard>,
+    ) -> BoxFuture<'_, Result<HttpResponse, RouteAwareRequestError>> {
+        self.send_with_resolver_guarded(
+            request,
+            |request_url| {
+                self.http_client_factory
+                    .resolve_proxy_route_async(request_url)
+            },
+            destination_guard,
+        )
         .boxed()
     }
 
+    /// Test-only spelling of [`Self::send_with_resolver_guarded`] without a guard.
+    #[cfg(test)]
     pub(super) async fn send_with_resolver<F, Fut>(
         &self,
         request: impl Into<RequestDraft>,
         resolve_route: F,
+    ) -> Result<HttpResponse, RouteAwareRequestError>
+    where
+        F: Fn(String) -> Fut,
+        Fut: Future<Output = io::Result<OutboundProxyRoute>>,
+    {
+        self.send_with_resolver_guarded(request, resolve_route, None)
+            .await
+    }
+
+    pub(super) async fn send_with_resolver_guarded<F, Fut>(
+        &self,
+        request: impl Into<RequestDraft>,
+        resolve_route: F,
+        destination_guard: Option<DestinationGuard>,
     ) -> Result<HttpResponse, RouteAwareRequestError>
     where
         F: Fn(String) -> Fut,
@@ -68,7 +103,11 @@ impl RouteAwareClientPool {
             .network_policy()
             .acquire(request.request.url())?;
         permit
-            .run(Box::pin(self.send_authorized(request, resolve_route)))
+            .run(Box::pin(self.send_authorized(
+                request,
+                resolve_route,
+                destination_guard,
+            )))
             .await?
     }
 
@@ -76,6 +115,7 @@ impl RouteAwareClientPool {
         &self,
         draft: RequestDraft,
         resolve_route: F,
+        destination_guard: Option<DestinationGuard>,
     ) -> Result<HttpResponse, RouteAwareRequestError>
     where
         F: Fn(String) -> Fut,
@@ -85,7 +125,14 @@ impl RouteAwareClientPool {
         let mut draft_headers = Some(draft.headers);
         let request_method = request.method().clone();
         let mut request_url = request.url().to_string();
-        let follows_redirects_manually = self.follows_redirects_manually();
+        // A guard has to see every hop, so on a client that WOULD follow
+        // redirects the pool follows them here instead: the transport's own
+        // redirect handling would never consult the guard. A client built
+        // without redirects never opens a second hop, so it keeps handing the
+        // redirect itself back to the caller — the guard decides who checks a
+        // hop, not whether one is taken.
+        let follows_redirects_manually = self.follows_redirects_manually()
+            || (destination_guard.is_some() && self.client_builder.follows_redirects());
         let timeout_deadline = request
             .timeout()
             .copied()
@@ -94,13 +141,24 @@ impl RouteAwareClientPool {
         let mut previous_route = None;
         loop {
             let current_url = request.url().clone();
+            // The same predicate the caller applied to the URL it built now
+            // applies to the URL this hop would really connect to.
+            if let Some(guard) = destination_guard.as_ref()
+                && let Some(reason) = guard(current_url.as_str())
+            {
+                return Err(RouteAwareRequestError::Build(reason));
+            }
             let permit = self
                 .http_client_factory
                 .network_policy()
                 .acquire(&current_url)?;
             let hop = async {
                 let (current_route, mut client, selected_tls_backend) = self
-                    .client_for_url_with_resolver(current_url.as_str(), &resolve_route)
+                    .client_for_url_with_resolver(
+                        current_url.as_str(),
+                        &resolve_route,
+                        follows_redirects_manually,
+                    )
                     .await?;
                 client.request_logging = self.client_builder.request_logging;
                 if let Some(headers) = draft_headers.take() {
@@ -142,6 +200,7 @@ impl RouteAwareClientPool {
                             replay.as_ref(),
                             error,
                             timeout_deadline,
+                            follows_redirects_manually,
                         )
                         .await
                     }
@@ -155,6 +214,7 @@ impl RouteAwareClientPool {
                             None,
                             error,
                             timeout_deadline,
+                            follows_redirects_manually,
                         )
                         .await
                     }
@@ -231,6 +291,7 @@ impl RouteAwareClientPool {
         #[cfg(windows)] proxy_pipe: Option<&ProxyPipe>,
         error: reqwest::Error,
         timeout_deadline: Option<tokio::time::Instant>,
+        follows_redirects_manually: bool,
     ) -> Result<reqwest::Response, RouteAwareRequestError> {
         let Some(rustls_clients) = self.rustls_clients.as_ref() else {
             return Err(error.into());
@@ -263,13 +324,13 @@ impl RouteAwareClientPool {
         };
         let mut fallback_client = match candidate {
             Some(client) => client,
-            None => self.rustls_client_for_route(current_route)?,
+            None => self.rustls_client_for_route(current_route, follows_redirects_manually)?,
         };
         fallback_client.request_logging = self.client_builder.request_logging;
 
         set_remaining_timeout(&mut retry_request, timeout_deadline)?;
 
-        let response = if self.follows_redirects_manually() {
+        let response = if follows_redirects_manually {
             fallback_client
                 .execute_without_request_logging(retry_request)
                 .await
@@ -299,6 +360,7 @@ impl RouteAwareClientPool {
         replay: Option<&reqwest::Request>,
         error: RouteAwareRequestError,
         timeout_deadline: Option<tokio::time::Instant>,
+        follows_redirects_manually: bool,
     ) -> Result<reqwest::Response, RouteAwareRequestError> {
         let OutboundProxyRoute::Proxy { url, .. } = current_route else {
             return Err(error);
@@ -338,6 +400,7 @@ impl RouteAwareClientPool {
                     Some(&pipe),
                     error,
                     timeout_deadline,
+                    follows_redirects_manually,
                 )
                 .await
             }

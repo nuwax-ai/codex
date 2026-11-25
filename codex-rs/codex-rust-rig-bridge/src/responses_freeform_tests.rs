@@ -151,3 +151,79 @@ fn the_flag_parses_the_documented_spellings() {
     let error = parse_freeform_tools_flag("maybe").expect_err("invalid value");
     assert!(error.contains("is not a boolean"), "{error}");
 }
+
+/// A thread that recorded free-form calls (the Chat wire keeps the custom
+/// declaration, and `NUWAX_FREEFORM_TOOLS=1` keeps it here) must not replay
+/// them to a gateway the request just told that every tool is a function — and
+/// the converted result has to stay a tool result so the trailing-result
+/// repair above still recognizes it.
+#[test]
+fn custom_tool_history_is_rewritten_as_function_history() {
+    let mut request = request_with_tools(json!([{
+        "type": "custom",
+        "name": "apply_patch",
+        "description": "freeform patch tool",
+        "format": { "type": "grammar", "syntax": "lark", "definition": "start: patch" }
+    }]));
+    request.input = serde_json::from_value(json!([
+        {"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]},
+        {"type":"custom_tool_call","name":"apply_patch","call_id":"call-1","input":"*** Begin Patch"},
+        {"type":"custom_tool_call_output","call_id":"call-1","output":"ok"}
+    ]))
+    .expect("input items");
+
+    super::prepare_responses_input(
+        &mut request,
+        /*freeform_tools*/ false,
+        /*repair*/ true,
+    )
+    .expect("prepare");
+
+    assert_eq!(tools_of(&request)[0]["type"], json!("function"));
+    let input = serde_json::to_value(&request.input).expect("serialize input");
+    let items = input.as_array().expect("input array");
+    // The converted result is still a tool result, so the trailing-result
+    // repair recognizes it and closes the request with its user turn.
+    assert_eq!(
+        &items[..3],
+        json!([
+            {"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]},
+            {
+                "type":"function_call",
+                "name":"apply_patch",
+                "arguments":"{\"input\":\"*** Begin Patch\"}",
+                "call_id":"call-1"
+            },
+            {"type":"function_call_output","call_id":"call-1","output":"ok"}
+        ])
+        .as_array()
+        .expect("expected items")
+        .as_slice()
+    );
+    assert_eq!(items.len(), 4, "trailing tool result got its user turn");
+    assert_eq!(items[3]["type"], json!("message"));
+    assert_eq!(items[3]["role"], json!("user"));
+}
+
+/// The rewrite is a no-op on a request that carries no custom history, so a
+/// function-only thread keeps its bytes.
+#[test]
+fn function_only_history_is_left_alone() {
+    let mut request = request_with_tools(json!([{
+        "type": "function",
+        "name": "shell",
+        "parameters": {"type":"object","properties":{"command":{"type":"string"}}}
+    }]));
+    request.input = serde_json::from_value(json!([
+        {"type":"function_call","name":"shell","arguments":"{\"command\":\"ls\"}","call_id":"call-1"},
+        {"type":"function_call_output","call_id":"call-1","output":"ok"}
+    ]))
+    .expect("input items");
+    let before = serde_json::to_value(&request.input).expect("serialize input");
+
+    assert_eq!(super::downgrade_custom_tool_history(&mut request.input), 0);
+    assert_eq!(
+        serde_json::to_value(&request.input).expect("serialize input"),
+        before
+    );
+}

@@ -860,8 +860,29 @@ impl ContextManager {
     /// established the prior baseline, so future turns must fall back to full reinjection instead
     /// of diffing against stale state.
     pub(crate) fn drop_last_n_user_turns(&mut self, num_turns: u32) {
+        self.drop_last_n_user_turns_tracking_prefix(num_turns, /*tracked*/ 0);
+    }
+
+    /// [`Self::drop_last_n_user_turns`], reporting what the rollback did to a
+    /// measured prefix of the surface.
+    ///
+    /// Returns how many of the first `tracked` items of the surface as it stood
+    /// BEFORE the rollback are still on it afterwards, in their original order.
+    /// A caller that knows a usage report covered exactly those `tracked` items
+    /// uses the answer as the report's new boundary.
+    ///
+    /// The count is not `min(tracked, remaining length)`: besides cutting the
+    /// tail, a rollback drops model output that answers the removed input
+    /// wherever that output sits, and may empty out a developer message. Both
+    /// happen BEFORE the cut, so an item the report never measured can end up
+    /// inside a boundary that was merely clamped.
+    pub(crate) fn drop_last_n_user_turns_tracking_prefix(
+        &mut self,
+        num_turns: u32,
+        tracked: usize,
+    ) -> usize {
         if num_turns == 0 {
-            return;
+            return tracked.min(self.annotated_items().len());
         }
 
         let snapshot = self.items.clone();
@@ -870,7 +891,7 @@ impl ContextManager {
             let retained_context = Arc::clone(&self.retained_context);
             self.replace_annotated(Arc::unwrap_or_clone(snapshot));
             self.retained_context = retained_context;
-            return;
+            return tracked.min(self.annotated_items().len());
         };
 
         let n_from_end = usize::try_from(num_turns).unwrap_or(usize::MAX);
@@ -963,9 +984,13 @@ impl ContextManager {
                 !removed_turns.contains(&answer.turn_id.as_str())
             });
         }
+        // Both surfaces are in hand here, so the measured prefix is compared
+        // item by item rather than inferred from how many items are left.
+        let surviving = surviving_measured_prefix(&snapshot, &retained_items, tracked);
         self.replace_annotated(retained_items);
         self.retained_context = retained_context;
         self.review_history = review_history;
+        surviving
     }
 
     pub(crate) fn update_token_info(
@@ -1572,6 +1597,35 @@ fn user_message_positions(items: &[ResponseItemEnvelope]) -> Vec<usize> {
         }
     }
     positions
+}
+
+/// How many of the first `tracked` items of `before` are still at the front of
+/// `after`, in order.
+///
+/// A rollback only removes items or rewrites one in place, so `after` follows
+/// `before` item by item: each retained item is matched with the next measured
+/// item of the same content. The first retained item that matches none ends the
+/// measured prefix — it is either newer than the report or a rewritten item
+/// whose current content the report never saw, and either way must be estimated.
+fn surviving_measured_prefix(
+    before: &[ResponseItemEnvelope],
+    after: &[ResponseItemEnvelope],
+    tracked: usize,
+) -> usize {
+    let measured = tracked.min(before.len());
+    let mut next_measured = 0usize;
+    let mut surviving = 0usize;
+    for retained in after {
+        let Some(offset) = before[next_measured..measured]
+            .iter()
+            .position(|envelope| envelope.item == retained.item)
+        else {
+            break;
+        };
+        next_measured += offset + 1;
+        surviving += 1;
+    }
+    surviving
 }
 
 #[cfg(test)]

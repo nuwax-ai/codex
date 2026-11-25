@@ -3826,3 +3826,413 @@ async fn resuming_a_compacted_thread_does_not_count_its_history_twice() {
         "resumed usage must be the report plus only what it does not cover"
     );
 }
+
+fn usage_test_user_message(id: Option<&str>, text: &str) -> ResponseItemEnvelope {
+    ResponseItemEnvelope {
+        item: ResponseItem::Message {
+            id: id.map(|id| codex_protocol::ResponseItemId::from_server(id.to_string())),
+            role: "user".to_owned(),
+            content: vec![ContentItem::InputText {
+                text: text.to_owned(),
+            }],
+            phase: None,
+            status: None,
+            encrypted_content: None,
+            internal_chat_message_metadata_passthrough: None,
+        },
+        metadata: None,
+    }
+}
+
+fn usage_test_turn_started(turn_id: &str) -> RolloutItem {
+    RolloutItem::EventMsg(EventMsg::TurnStarted(
+        codex_protocol::protocol::TurnStartedEvent {
+            turn_attribution: None,
+            turn_id: turn_id.to_string(),
+            root_turn_id: None,
+            trace_id: None,
+            started_at: None,
+            model_context_window: None,
+            collaboration_mode_kind: Default::default(),
+        },
+    ))
+}
+
+/// A rollback that removes the turn the report measured leaves a surface whose
+/// front still holds measured items, but the follow-up turn does not. The
+/// boundary must be rebased at the rollback, not clamped against the final
+/// length: otherwise the new input rides inside the boundary and is never
+/// estimated (review 2026-11-25, P1).
+#[tokio::test]
+async fn a_rollback_rebases_the_usage_boundary_onto_the_remaining_items() {
+    let (session, turn_context) = make_session_and_context().await;
+    let rollout_items = vec![
+        usage_test_turn_started("t1"),
+        RolloutItem::Compacted(Box::new(CompactedItem {
+            message: String::new(),
+            replacement_history: Some(vec![usage_test_user_message(
+                None,
+                "summary of the compacted turns",
+            )]),
+            retained_context: None,
+            guardian_history: None,
+            mcp_resource_origins: None,
+            window_number: Some(7),
+            first_window_id: None,
+            previous_window_id: None,
+            window_id: None,
+            compaction_response_id: None,
+            latest_token_usage_record: None,
+            resume_metadata: None,
+        })),
+        usage_test_turn_started("t2"),
+        RolloutItem::ResponseItem(usage_test_user_message(Some("item_a"), "reported a")),
+        RolloutItem::ResponseItem(usage_test_user_message(Some("item_b"), "reported b")),
+        usage_report(5_000),
+        usage_test_turn_started("t3"),
+        RolloutItem::ResponseItem(usage_test_user_message(Some("item_c"), "reported c")),
+        RolloutItem::EventMsg(EventMsg::ThreadRolledBack(ThreadRolledBackEvent {
+            num_turns: 2,
+        })),
+        usage_test_turn_started("t4"),
+        RolloutItem::ResponseItem(usage_test_user_message(
+            Some("item_new"),
+            "new input, never reported",
+        )),
+    ];
+
+    let reconstructed = session
+        .reconstruct_history_from_rollout(&turn_context, &rollout_items)
+        .await;
+
+    // The report measured [summary, a, b]; the rollback drops b and c, so only
+    // `summary` and `a` stay measured. `item_new` landed after the rollback and
+    // must stay outside the boundary.
+    let texts: Vec<&ResponseItem> = reconstructed
+        .history
+        .iter()
+        .map(|envelope| &envelope.item)
+        .collect();
+    assert_eq!(texts.len(), 3);
+    assert_eq!(reconstructed.usage_covered_items, Some(2));
+}
+
+/// A surface replacement cuts a prefix and plants a summary, so a position read
+/// before it addresses different items afterwards. Only the measured part of
+/// the kept tail still counts.
+#[tokio::test]
+async fn a_surface_replacement_rebases_the_usage_boundary_onto_the_kept_tail() {
+    let (session, turn_context) = make_session_and_context().await;
+    let rollout_items = vec![
+        RolloutItem::Compacted(Box::new(CompactedItem {
+            message: String::new(),
+            replacement_history: Some(vec![usage_test_user_message(
+                None,
+                "summary of the compacted turns",
+            )]),
+            retained_context: None,
+            guardian_history: None,
+            mcp_resource_origins: None,
+            window_number: Some(7),
+            first_window_id: None,
+            previous_window_id: None,
+            window_id: None,
+            compaction_response_id: None,
+            latest_token_usage_record: None,
+            resume_metadata: None,
+        })),
+        RolloutItem::ResponseItem(usage_test_user_message(Some("item_a"), "reported a")),
+        RolloutItem::ResponseItem(usage_test_user_message(Some("item_b"), "reported b")),
+        usage_report(5_000),
+        RolloutItem::SurfaceReplacement(Box::new(codex_history::SurfaceReplacementItem {
+            compaction_id: "cmp_1".to_string(),
+            resume_at_item_id: "item_b".to_string(),
+            summary: String::new(),
+            provider: "local".to_string(),
+            model: "small-window".to_string(),
+            shadowed_tokens: 400_000,
+            retained_tail_tokens: 2_000,
+            reason: codex_history::SurfaceReplacementReason::WindowShrink,
+            supersedes: Vec::new(),
+            pruned_tool_outputs: Vec::new(),
+        })),
+        RolloutItem::ResponseItem(usage_test_user_message(
+            Some("item_new"),
+            "new input, never reported",
+        )),
+    ];
+
+    let reconstructed = session
+        .reconstruct_history_from_rollout(&turn_context, &rollout_items)
+        .await;
+
+    // The trim keeps [b, new]; only `b` was measured (a no-summary trim plants
+    // nothing in front of it), so the boundary is exactly one item.
+    assert_eq!(reconstructed.history.len(), 2);
+    assert_eq!(reconstructed.usage_covered_items, Some(1));
+}
+
+/// End to end: the resumed total must charge the input that landed after the
+/// rollback, because the report never measured it.
+#[tokio::test]
+async fn resuming_after_a_rollback_estimates_the_new_input() {
+    let (session, _turn_context) = make_session_and_context().await;
+    let new_text = "new input, never reported";
+    let rollout_items = vec![
+        usage_test_turn_started("t1"),
+        RolloutItem::Compacted(Box::new(CompactedItem {
+            message: String::new(),
+            replacement_history: Some(vec![usage_test_user_message(
+                None,
+                "summary of the compacted turns",
+            )]),
+            retained_context: None,
+            guardian_history: None,
+            mcp_resource_origins: None,
+            window_number: Some(7),
+            first_window_id: None,
+            previous_window_id: None,
+            window_id: None,
+            compaction_response_id: None,
+            latest_token_usage_record: None,
+            resume_metadata: None,
+        })),
+        usage_test_turn_started("t2"),
+        RolloutItem::ResponseItem(usage_test_user_message(Some("item_a"), "reported a")),
+        RolloutItem::ResponseItem(usage_test_user_message(Some("item_b"), "reported b")),
+        usage_report(5_000),
+        usage_test_turn_started("t3"),
+        RolloutItem::ResponseItem(usage_test_user_message(Some("item_c"), "reported c")),
+        RolloutItem::EventMsg(EventMsg::ThreadRolledBack(ThreadRolledBackEvent {
+            num_turns: 2,
+        })),
+        usage_test_turn_started("t4"),
+        RolloutItem::ResponseItem(usage_test_user_message(Some("item_new"), new_text)),
+    ];
+    session
+        .record_initial_history(InitialHistory::Resumed(ResumedHistory {
+            history_revision: None,
+            conversation_id: ThreadId::default(),
+            history: Arc::new(rollout_items),
+            rollout_path: Some(PathBuf::from("/tmp/resume-rollback-usage.jsonl")),
+        }))
+        .await;
+
+    let total = session.get_total_token_usage().await;
+    let trailing = crate::context_manager::estimate_item_token_count(&ResponseItem::Message {
+        status: None,
+        encrypted_content: None,
+        id: None,
+        role: "user".to_string(),
+        content: vec![ContentItem::InputText {
+            text: new_text.to_string(),
+        }],
+        phase: None,
+        internal_chat_message_metadata_passthrough: None,
+    });
+    assert_eq!(
+        total,
+        5_000 + trailing,
+        "the input that landed after the rollback was never reported"
+    );
+}
+
+fn usage_test_message(
+    id: Option<&str>,
+    role: &str,
+    text: &str,
+    acceptance_order: Option<u64>,
+) -> ResponseItemEnvelope {
+    ResponseItemEnvelope {
+        item: ResponseItem::Message {
+            id: id.map(|id| codex_protocol::ResponseItemId::from_server(id.to_string())),
+            role: role.to_owned(),
+            content: vec![ContentItem::InputText {
+                text: text.to_owned(),
+            }],
+            phase: None,
+            status: None,
+            encrypted_content: None,
+            internal_chat_message_metadata_passthrough: None,
+        },
+        metadata: Some(codex_history::CodexHarnessMetadata {
+            user_input_order: acceptance_order,
+            ..Default::default()
+        }),
+    }
+}
+
+fn usage_test_summary() -> Vec<ResponseItemEnvelope> {
+    vec![usage_test_user_message(
+        None,
+        "summary of the compacted turns",
+    )]
+}
+
+fn usage_test_compaction() -> RolloutItem {
+    RolloutItem::Compacted(Box::new(CompactedItem {
+        message: String::new(),
+        replacement_history: Some(usage_test_summary()),
+        retained_context: None,
+        guardian_history: None,
+        mcp_resource_origins: None,
+        window_number: Some(7),
+        first_window_id: None,
+        previous_window_id: None,
+        window_id: None,
+        compaction_response_id: None,
+        latest_token_usage_record: None,
+        resume_metadata: None,
+    }))
+}
+
+fn usage_test_trim(resume_at_item_id: &str, summary: &str) -> RolloutItem {
+    RolloutItem::SurfaceReplacement(Box::new(codex_history::SurfaceReplacementItem {
+        compaction_id: "cmp_1".to_string(),
+        resume_at_item_id: resume_at_item_id.to_string(),
+        summary: summary.to_string(),
+        provider: "local".to_string(),
+        model: "small-window".to_string(),
+        shadowed_tokens: 400_000,
+        retained_tail_tokens: 2_000,
+        reason: codex_history::SurfaceReplacementReason::WindowShrink,
+        supersedes: Vec::new(),
+        pruned_tool_outputs: Vec::new(),
+    }))
+}
+
+async fn usage_test_texts(rollout_items: Vec<RolloutItem>) -> (Vec<String>, Option<usize>) {
+    let (session, turn_context) = make_session_and_context().await;
+    let reconstructed = session
+        .reconstruct_history_from_rollout(&turn_context, &rollout_items)
+        .await;
+    let texts = reconstructed
+        .history
+        .iter()
+        .map(|envelope| match &envelope.item {
+            ResponseItem::Message { content, .. } => content
+                .iter()
+                .filter_map(|part| match part {
+                    ContentItem::InputText { text } => Some(text.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join(" "),
+            other => format!("{other:?}"),
+        })
+        .collect();
+    (texts, reconstructed.usage_covered_items)
+}
+
+/// A rollback does not only cut the tail: model output that answers the removed
+/// input is dropped wherever it sits, so an item from AFTER the report can slide
+/// into the range the report measured. The boundary has to follow the items the
+/// report actually measured, not just the surface length (review 2026-11-25, P1).
+#[tokio::test]
+async fn a_rollback_only_keeps_the_measured_items_that_survive_it() {
+    let (texts, covered) = usage_test_texts(vec![
+        usage_test_turn_started("t1"),
+        usage_test_compaction(),
+        usage_test_turn_started("t2"),
+        RolloutItem::ResponseItem(usage_test_message(
+            Some("q"),
+            "user",
+            "reported question",
+            Some(1),
+        )),
+        RolloutItem::ResponseItem(usage_test_message(
+            Some("a"),
+            "assistant",
+            "reported answer",
+            // Accepted after the request that gets rolled back, so the rollback
+            // drops this answer even though it sits before the cut.
+            Some(2),
+        )),
+        usage_report(5_000),
+        RolloutItem::ResponseItem(usage_test_message(
+            Some("d"),
+            "developer",
+            "landed after the report",
+            None,
+        )),
+        RolloutItem::ResponseItem(usage_test_message(
+            Some("r"),
+            "user",
+            "request that gets rolled back",
+            Some(1),
+        )),
+        RolloutItem::EventMsg(EventMsg::ThreadRolledBack(ThreadRolledBackEvent {
+            num_turns: 1,
+        })),
+        usage_test_turn_started("t3"),
+        RolloutItem::ResponseItem(usage_test_message(
+            Some("n"),
+            "user",
+            "new input, never reported",
+            None,
+        )),
+    ])
+    .await;
+
+    assert_eq!(
+        texts,
+        [
+            "summary of the compacted turns",
+            "reported question",
+            "landed after the report",
+            "new input, never reported",
+        ],
+        "the rollback drops the measured answer and keeps the later developer message"
+    );
+    // Only the summary and the reported question were both measured and kept.
+    assert_eq!(covered, Some(2));
+}
+
+/// A report recorded BEFORE the trim measured the untrimmed surface: the summary
+/// the trim plants afterwards was never part of what it paid for.
+#[tokio::test]
+async fn a_report_before_the_trim_never_measured_the_planted_summary() {
+    let (texts, covered) = usage_test_texts(vec![
+        usage_test_compaction(),
+        RolloutItem::ResponseItem(usage_test_user_message(Some("item_a"), "reported a")),
+        RolloutItem::ResponseItem(usage_test_user_message(Some("item_b"), "reported b")),
+        usage_report(5_000),
+        usage_test_trim("item_b", "kept working notes"),
+        RolloutItem::ResponseItem(usage_test_user_message(
+            Some("item_new"),
+            "new input, never reported",
+        )),
+    ])
+    .await;
+
+    // The planted item is the trim's summary behind the standard hand-off prefix.
+    assert_eq!(texts.len(), 3);
+    assert!(texts[0].ends_with("kept working notes"), "{}", texts[0]);
+    assert_eq!(&texts[1..], ["reported b", "new input, never reported"]);
+    // The summary is new to the model, so it is estimated, not covered.
+    assert_eq!(covered, Some(1));
+}
+
+/// A report recorded AFTER the trim saw the planted summary in place of the
+/// range it shadowed, so the summary counts as measured.
+#[tokio::test]
+async fn a_report_after_the_trim_measured_the_planted_summary() {
+    let (texts, covered) = usage_test_texts(vec![
+        usage_test_compaction(),
+        RolloutItem::ResponseItem(usage_test_user_message(Some("item_a"), "reported a")),
+        RolloutItem::ResponseItem(usage_test_user_message(Some("item_b"), "reported b")),
+        usage_test_trim("item_b", "kept working notes"),
+        usage_report(5_000),
+        RolloutItem::ResponseItem(usage_test_user_message(
+            Some("item_new"),
+            "new input, never reported",
+        )),
+    ])
+    .await;
+
+    // The planted item is the trim's summary behind the standard hand-off prefix.
+    assert_eq!(texts.len(), 3);
+    assert!(texts[0].ends_with("kept working notes"), "{}", texts[0]);
+    assert_eq!(&texts[1..], ["reported b", "new input, never reported"]);
+    assert_eq!(covered, Some(2));
+}

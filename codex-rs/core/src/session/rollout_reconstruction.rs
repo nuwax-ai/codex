@@ -53,6 +53,23 @@ fn ids_after_record(
         .collect()
 }
 
+/// Where an applied replacement moved the model-visible surface, reported so
+/// replay state recorded against the pre-replacement positions can be carried
+/// over instead of silently pointing at the wrong items.
+struct AppliedSurfaceReplacement {
+    /// Items the pre-replacement surface had when the cut was computed.
+    items_before: usize,
+    /// Index in that surface of the first item the replacement keeps.
+    kept_from: usize,
+    /// Whether a summary item was planted in front of the kept tail.
+    planted_summary: bool,
+    /// Position of the applied record in the replayed suffix. Replay applies the
+    /// cut only after the whole suffix is replayed, so this — not the moment the
+    /// cut ran — says which usage reports were written after the model had
+    /// already seen the trimmed surface.
+    record_index: usize,
+}
+
 /// Cut the replayed surface at the newest active replacement's boundary.
 ///
 /// The model must see the summary in place of everything older than the boundary
@@ -60,10 +77,10 @@ fn ids_after_record(
 fn apply_active_surface_replacement(
     history: &mut crate::context_manager::ContextManager,
     rollout_items: &[RolloutItem],
-) {
+) -> Option<AppliedSurfaceReplacement> {
     let active = active_surface_replacements(rollout_items);
     let Some(&(record_index, replacement)) = active.last() else {
-        return;
+        return None;
     };
     let items = history.annotated_items();
     // An empty boundary id is a no-summary trim with an EMPTY retained tail:
@@ -96,12 +113,14 @@ fn apply_active_surface_replacement(
             boundary = replacement.resume_at_item_id.as_str(),
             "surface replacement boundary missing from the replayed history"
         );
-        return;
+        return None;
     };
+    let items_before = items.len();
+    let planted_summary = !replacement.summary.trim().is_empty();
     let mut next = Vec::with_capacity(items.len().saturating_sub(index).saturating_add(1));
     // A no-summary trim (empty summary) omits the shadowed range outright;
     // nothing is planted in its place.
-    if !replacement.summary.trim().is_empty() {
+    if planted_summary {
         next.push(ResponseItemEnvelope {
             item: surface_replacement_summary_item(replacement),
             metadata: None,
@@ -137,6 +156,12 @@ fn apply_active_surface_replacement(
         }
     }
     history.replace_annotated(next);
+    Some(AppliedSurfaceReplacement {
+        items_before,
+        kept_from: index,
+        planted_summary,
+        record_index,
+    })
 }
 
 /// The message planted where a replacement cuts the surface. Reusing the
@@ -687,10 +712,19 @@ impl ContextManager {
         // replayed suffix can be located this way: what it measured is either
         // the compaction's replacement history or an item replayed in order
         // below it. The newest report wins, so keep overwriting.
+        //
+        // A position is only meaningful while the surface keeps the shape it
+        // had when the report was read: a rollback truncates it and a surface
+        // replacement shifts it, so both adjust the position below instead of
+        // leaving it pointing past items the report never measured.
         let mut usage_covered_items = None;
-        for item in rollout_suffix {
+        // Where in the suffix the winning report sits, for ordering it against
+        // the trim that is applied after replay (see the rebase below).
+        let mut usage_report_index = None;
+        for (index, item) in rollout_suffix.iter().enumerate() {
             if is_usage_report(item) {
                 usage_covered_items = Some(history.annotated_items().len());
+                usage_report_index = Some(index);
             }
             match item {
                 RolloutItem::SurfaceReplacement(_) => {}
@@ -729,10 +763,27 @@ impl ContextManager {
                         let retained_context = history.retained_context().clone();
                         history.replace_annotated(rebuilt);
                         history.restore_retained_context(Some(&retained_context));
+                        // The rebuilt surface has no relationship to the one the
+                        // report measured: drop the position rather than guess.
+                        usage_covered_items = None;
+                        usage_report_index = None;
                     }
                 }
                 RolloutItem::EventMsg(EventMsg::ThreadRolledBack(rollback)) => {
-                    history.drop_last_n_user_turns(rollback.num_turns);
+                    // A rollback cuts the tail AND drops model output that
+                    // answers the removed input wherever it sits, so a measured
+                    // item can vanish from before the cut while an item the
+                    // report never measured stays on. The boundary therefore
+                    // follows the measured items themselves, not the length.
+                    if let Some(covered) = usage_covered_items {
+                        usage_covered_items =
+                            Some(history.drop_last_n_user_turns_tracking_prefix(
+                                rollback.num_turns,
+                                covered,
+                            ));
+                    } else {
+                        history.drop_last_n_user_turns(rollback.num_turns);
+                    }
                 }
                 RolloutItem::EventMsg(_)
                 | RolloutItem::TurnContext(_)
@@ -798,7 +849,29 @@ impl ContextManager {
         // checkpoint absorbs every earlier migration record (its replacement_history
         // is authoritative), so re-applying an older boundary on top could delete
         // content the newer checkpoint deliberately kept before that boundary.
-        apply_active_surface_replacement(&mut history, rollout_suffix);
+        let applied_surface_replacement =
+            apply_active_surface_replacement(&mut history, rollout_suffix);
+        if let Some(replacement) = &applied_surface_replacement
+            && let Some(covered) = usage_covered_items
+        {
+            // The report measured the surface as it stood before the cut. After
+            // it, the surface is `[planted summary] + kept tail`, so only the
+            // measured items that survived inside that tail still sit at the
+            // front of what the model sees.
+            let measured_tail = covered
+                .min(replacement.items_before)
+                .saturating_sub(replacement.kept_from);
+            // The summary stands in for a range the report paid for, but only a
+            // report written AFTER the trim ever saw it: an earlier one measured
+            // the untrimmed surface, where that summary did not exist.
+            let summary_measured = replacement.planted_summary
+                && usage_report_index.is_some_and(|at| at > replacement.record_index);
+            usage_covered_items = Some(if summary_measured {
+                measured_tail.saturating_add(1)
+            } else {
+                measured_tail
+            });
+        }
 
         let window = window.or(initial_window).unwrap_or(ReconstructedWindow {
             number: fallback_window_number,
@@ -809,31 +882,35 @@ impl ContextManager {
         // 诊断（2026-11-24）：恢复会话时上下文有多大、压缩基线占多少、压缩之后又
         // 新增了多少。三者一起决定恢复后的第一轮会不会立刻触发自动压缩——总量超过
         // 窗口×ratio 就会压，而基线 + 增量正是总量的来源。
-        let restored_items = history.annotated_items();
-        let restored_bytes = serde_json::to_vec(&history.raw_items().collect::<Vec<_>>())
-            .map_or(0, |bytes| bytes.len());
-        let baseline_bytes = input_checkpoint
-            .and_then(|checkpoint| checkpoint.compacted.replacement_history.as_deref())
-            .map_or(0, |items| {
-                let items = items
-                    .iter()
-                    .map(|envelope| &envelope.item)
-                    .collect::<Vec<_>>();
-                serde_json::to_vec(&items).map_or(0, |bytes| bytes.len())
-            });
-        let suffix_bytes = serde_json::to_vec(replay_items).map_or(0, |bytes| bytes.len());
-        tracing::info!(
-            restored_items = restored_items.len(),
-            restored_kib = restored_bytes / 1024,
-            compaction_window =
-                input_checkpoint.and_then(|checkpoint| checkpoint.compacted.window_number),
-            compaction_baseline_kib = baseline_bytes / 1024,
-            suffix_records = replay_items.len(),
-            suffix_kib = suffix_bytes / 1024,
-            rollout_records = rollout_items.len(),
-            ?history_mode,
-            "resumed a thread from its rollout"
-        );
+        //
+        // 只在真的要打这条 INFO 时才量，而且是流式计数（review 2026-11-25 P2）：
+        // 一个带内联截图的长会话，恢复瞬间的历史、压缩基线和回放后缀都能到几十 MB，
+        // 先 `to_vec` 再取 `.len()` 等于为了一个长度再分配一遍同样大的缓冲。
+        if tracing::enabled!(target: module_path!(), tracing::Level::INFO) {
+            let restored_bytes = json_size(&history.raw_items().collect::<Vec<_>>());
+            let baseline_bytes = input_checkpoint
+                .and_then(|checkpoint| checkpoint.compacted.replacement_history.as_deref())
+                .map_or(0, |items| {
+                    let items = items
+                        .iter()
+                        .map(|envelope| &envelope.item)
+                        .collect::<Vec<_>>();
+                    json_size(&items)
+                });
+            let suffix_bytes = json_size(&replay_items);
+            tracing::info!(
+                restored_items = history.annotated_items().len(),
+                restored_kib = restored_bytes / 1024,
+                compaction_window =
+                    input_checkpoint.and_then(|checkpoint| checkpoint.compacted.window_number),
+                compaction_baseline_kib = baseline_bytes / 1024,
+                suffix_records = replay_items.len(),
+                suffix_kib = suffix_bytes / 1024,
+                rollout_records = rollout_items.len(),
+                ?history_mode,
+                "resumed a thread from its rollout"
+            );
+        }
         // A legacy compaction without a window number replays the whole rollout,
         // so no compaction bounds the surface and a raw position means nothing.
         // `rollout_suffix` is bounded by whichever compaction the replay actually
@@ -890,4 +967,76 @@ fn reconstructed_window_from_session_context_window(
         previous_id: None,
         id: Some(id),
     })
+}
+
+/// Size in bytes of `value`'s JSON encoding, counted as it is written.
+///
+/// The resume diagnostics only report a size, so routing the serializer through
+/// a writer that keeps the count and drops the bytes avoids materializing a
+/// second copy of an image-heavy surface just to read its length.
+fn json_size(value: &impl serde::Serialize) -> usize {
+    #[derive(Default)]
+    struct CountingWriter(usize);
+    impl std::io::Write for CountingWriter {
+        fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+            self.0 += buffer.len();
+            Ok(buffer.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut writer = CountingWriter::default();
+    serde_json::to_writer(&mut writer, value).map_or(0, |()| writer.0)
+}
+
+#[cfg(test)]
+mod json_size_tests {
+    use super::json_size;
+    use codex_protocol::models::ContentItem;
+    use codex_protocol::models::ResponseItem;
+
+    /// The counting writer must report exactly what `to_vec` would have
+    /// produced, or the resume diagnostics would silently change units.
+    #[test]
+    fn counting_writer_matches_the_materialized_encoding() {
+        let items = vec![
+            ResponseItem::Message {
+                status: None,
+                encrypted_content: None,
+                id: None,
+                role: "user".to_string(),
+                content: vec![ContentItem::InputText {
+                    text: "hello".to_string(),
+                }],
+                phase: None,
+                internal_chat_message_metadata_passthrough: None,
+            },
+            ResponseItem::Message {
+                status: None,
+                encrypted_content: None,
+                id: None,
+                role: "assistant".to_string(),
+                content: vec![ContentItem::OutputText {
+                    text: "\u{4f60}\u{597d}\u{ff0c}\u{4e16}\u{754c}".to_string(),
+                    annotations: None,
+                    logprobs: None,
+                }],
+                phase: None,
+                internal_chat_message_metadata_passthrough: None,
+            },
+        ];
+        // `raw_items()` hands out `&ResponseItem`, which is what the diagnostic
+        // counts; keep the test on the same shape.
+        let borrowed = items.iter().collect::<Vec<_>>();
+        assert_eq!(
+            json_size(&borrowed),
+            serde_json::to_vec(&borrowed).expect("serialize").len()
+        );
+        assert_eq!(
+            json_size(&items),
+            serde_json::to_vec(&items).expect("serialize").len()
+        );
+        assert_eq!(json_size(&Vec::<&ResponseItem>::new()), 2);
+    }
 }

@@ -56,10 +56,18 @@ pub struct RouteAwareClientPool {
     pub(crate) client_builder: HttpClientBuilder,
     default_headers: HeaderMap,
     custom_ca_fallback: CustomCaFallback,
-    clients: Arc<Mutex<HashMap<OutboundProxyRoute, TransportClient>>>,
+    /// Cached transports, keyed by route plus the redirect behavior they were
+    /// built with ([`ClientCacheKey`]).
+    clients: Arc<Mutex<HashMap<ClientCacheKey, TransportClient>>>,
     client_build: Arc<tokio::sync::Mutex<()>>,
     rustls_clients: Option<RustlsClientCache>,
 }
+
+/// Route plus the redirect behavior the cached client was built with. A
+/// request guarded by a `DestinationGuard` follows redirects itself on a
+/// client that allows them, and must not share a cached client that does
+/// not.
+type ClientCacheKey = (OutboundProxyRoute, bool);
 
 impl fmt::Debug for RouteAwareClientPool {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -302,12 +310,14 @@ impl RouteAwareClientPool {
         route: OutboundProxyRoute,
     ) -> Result<Self, BuildRouteAwareHttpClientError> {
         let mut pool = Self::with_builder(http_client_factory, route_class, client_builder);
-        let client = pool.client_builder_for_route().build_for_resolved_route(
-            &pool.http_client_factory,
-            pool.route_class,
-            &route,
-        )?;
-        pool.clients = Arc::new(Mutex::new(HashMap::from([(route, client)])));
+        let manual_redirects = pool.follows_redirects_manually();
+        let client = pool
+            .client_builder_for_route(manual_redirects)
+            .build_for_resolved_route(&pool.http_client_factory, pool.route_class, &route)?;
+        pool.clients = Arc::new(Mutex::new(HashMap::from([(
+            (route, manual_redirects),
+            client,
+        )])));
         Ok(pool)
     }
 
@@ -471,6 +481,7 @@ impl RouteAwareClientPool {
         &self,
         request_url: &str,
         resolve_route: F,
+        follows_redirects_manually: bool,
     ) -> Result<(OutboundProxyRoute, TransportClient, SelectedTlsBackend), RouteAwareClientPoolError>
     where
         F: FnOnce(String) -> Fut,
@@ -483,6 +494,7 @@ impl RouteAwareClientPool {
                 .await
                 .map_err(RouteAwareClientPoolError::Resolve)?
         };
+        let cache_key = (route.clone(), follows_redirects_manually);
         if let Some(rustls_clients) = self.rustls_clients.as_ref()
             && let Ok(url) = reqwest::Url::parse(request_url)
             && rustls_clients.requires_rustls(&url, &route)
@@ -497,7 +509,7 @@ impl RouteAwareClientPool {
                     panic!("route-aware client cache lock should not be poisoned: {error}")
                 }
             };
-            if let Some(client) = clients.get(&route) {
+            if let Some(client) = clients.get(&cache_key) {
                 return Ok((route, client.clone(), SelectedTlsBackend::TransportDefault));
             }
         }
@@ -507,11 +519,11 @@ impl RouteAwareClientPool {
             let clients = self.clients.lock().unwrap_or_else(|error| {
                 panic!("route-aware client cache lock should not be poisoned: {error}")
             });
-            if let Some(client) = clients.get(&route) {
+            if let Some(client) = clients.get(&cache_key) {
                 return Ok((route, client.clone(), SelectedTlsBackend::TransportDefault));
             }
         }
-        let client_builder = self.client_builder_for_route();
+        let client_builder = self.client_builder_for_route(follows_redirects_manually);
         let pool = self.clone();
         let build_route = route.clone();
         let client = tokio::task::spawn_blocking(move || {
@@ -566,7 +578,7 @@ impl RouteAwareClientPool {
             {
                 clients.remove(&route_to_evict);
             }
-            clients.insert(build_route, client.clone());
+            clients.insert((build_route, follows_redirects_manually), client.clone());
             Ok::<_, BuildRouteAwareHttpClientError>(client)
         })
         .await
@@ -582,11 +594,18 @@ impl RouteAwareClientPool {
                     == OutboundProxyPolicy::ResolvedDefault
                 || self.http_client_factory.network_policy().is_managed()
                 || self.http_client_factory.protects_sensitive_headers()
+                // The rustls fallback cache hands out clients by route alone,
+                // so every client it can hold has to be built for the manual
+                // path. That is what lets a request guarded by a
+                // `DestinationGuard` share this cache: on a client that follows
+                // redirects the guard moves the request onto the manual path,
+                // which here is already the pool-wide rule, so the two never
+                // disagree on how a cached client treats a redirect.
                 || self.rustls_clients.is_some())
     }
 
-    fn client_builder_for_route(&self) -> HttpClientBuilder {
-        if self.follows_redirects_manually() {
+    fn client_builder_for_route(&self, follows_redirects_manually: bool) -> HttpClientBuilder {
+        if follows_redirects_manually {
             self.client_builder.clone().without_redirects()
         } else {
             self.client_builder.clone()
@@ -596,9 +615,10 @@ impl RouteAwareClientPool {
     fn rustls_client_for_route(
         &self,
         route: &OutboundProxyRoute,
+        follows_redirects_manually: bool,
     ) -> Result<TransportClient, RouteAwareClientPoolError> {
         let mut client_builder = self.client_builder.clone().with_rustls_tls();
-        if self.follows_redirects_manually() {
+        if follows_redirects_manually {
             client_builder = client_builder.without_redirects();
         }
         client_builder

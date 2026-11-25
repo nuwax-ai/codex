@@ -30,7 +30,19 @@ pub struct RequestBuilder {
     /// [`RequestBuilder::refused`].
     backend: Option<HttpClientBackend>,
     request: Result<RequestDraft, HttpError>,
+    /// Consulted for every destination the request connects to, redirects
+    /// included. `Some(reason)` refuses that hop before a route is resolved or
+    /// a name is looked up.
+    destination_guard: Option<DestinationGuard>,
 }
+
+/// A per-destination policy the transport applies to every hop of one request.
+///
+/// A caller that refuses a destination only by looking at the URL it was handed
+/// leaves redirects unguarded: the transport follows a `Location` itself and
+/// would connect to a host the caller never saw. Attach the same predicate here
+/// and the refusal covers each hop.
+pub type DestinationGuard = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 
 impl fmt::Debug for RequestBuilder {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -54,6 +66,7 @@ impl RequestBuilder {
         Self {
             backend: Some(HttpClientBackend::Direct(client.clone())),
             request: RequestDraft::new(method, url).map_err(HttpError::Request),
+            destination_guard: None,
         }
     }
 
@@ -65,6 +78,7 @@ impl RequestBuilder {
         Self {
             backend: Some(HttpClientBackend::Routed(pool)),
             request: RequestDraft::new(method, url).map_err(HttpError::Request),
+            destination_guard: None,
         }
     }
 
@@ -76,7 +90,19 @@ impl RequestBuilder {
         Self {
             backend: None,
             request: Err(HttpError::Build(reason.into())),
+            destination_guard: None,
         }
+    }
+
+    /// Applies `guard` to every hop this request takes, redirects included.
+    ///
+    /// On a client that follows redirects the pool follows them itself while a
+    /// guard is attached, so the refusal cannot be skipped by a transport-level
+    /// redirect. Whether redirects are followed at all stays the client's
+    /// decision: one built without redirects still returns them unanswered.
+    pub fn destination_guard(mut self, guard: DestinationGuard) -> Self {
+        self.destination_guard = Some(guard);
+        self
     }
 
     fn map(mut self, update: impl FnOnce(&mut RequestDraft) -> Result<(), HttpError>) -> Self {
@@ -196,8 +222,20 @@ impl RequestBuilder {
         // touched, which is also what makes a refused request never leave.
         let request = self.request?;
         match self.backend {
-            Some(HttpClientBackend::Routed(pool)) => pool.send(request).await,
+            Some(HttpClientBackend::Routed(pool)) => {
+                pool.send_guarded(request, self.destination_guard).await
+            }
             Some(HttpClientBackend::Direct(client)) => {
+                // A direct client's transport follows redirects itself and
+                // never calls back here, so a guard could not cover its hops.
+                // Refusing beats enforcing nothing while the caller believes
+                // the destination is policed.
+                if self.destination_guard.is_some() {
+                    return Err(HttpError::Build(
+                        "a destination guard needs a routed transport; this request uses a fixed client"
+                            .into(),
+                    ));
+                }
                 Ok(client.execute(request.build(&client)?).await?.into())
             }
             None => Err(HttpError::Build(

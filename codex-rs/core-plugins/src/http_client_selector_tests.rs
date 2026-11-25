@@ -164,3 +164,61 @@ async fn a_closed_gate_still_reaches_a_loopback_mirror() -> Result<(), Box<dyn s
     assert!(read > 0);
     Ok(())
 }
+
+/// A mirror the operator configured is not OpenAI's, but the redirect it hands
+/// back can be. With the gate closed the refusal must follow the request onto
+/// that hop instead of stopping at the URL the caller built.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_closed_gate_refuses_the_openai_host_a_mirror_redirects_to()
+-> Result<(), Box<dyn std::error::Error>> {
+    use tokio::io::AsyncReadExt;
+    use tokio::io::AsyncWriteExt;
+    use tokio::sync::oneshot;
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let address = listener.local_addr()?;
+    let (served, mut served_rx) = oneshot::channel();
+    let server = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await?;
+        let mut request = [0u8; 2048];
+        let read = socket.read(&mut request).await?;
+        assert!(read > 0, "the mirror should receive the first hop");
+        // The mirror answers with OpenAI's own backend, exactly as a misdirected
+        // or compromised plugin directory could.
+        socket
+            .write_all(
+                b"HTTP/1.1 302 Found\r\nlocation: https://chatgpt.com/backend-api/plugins/featured\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
+            )
+            .await?;
+        let _ = served.send(());
+        // Nothing else may arrive: the redirect target has to be refused before
+        // a connection is attempted.
+        let mut extra = [0u8; 64];
+        Ok::<usize, std::io::Error>(socket.read(&mut extra).await.unwrap_or(0))
+    });
+    let factory = crate::test_support::test_http_client_factory();
+    let pool = OpenAiEgressGatedClientPool::with_egress(api_pool(&factory), false);
+    let error = tokio::time::timeout(
+        Duration::from_secs(5),
+        pool.request(
+            Method::GET,
+            &format!("http://{address}/backend-api/plugins/featured"),
+        )
+        .send(),
+    )
+    .await?
+    .expect_err("the redirect target is OpenAI's, so the gate must refuse it");
+    let RouteAwareRequestError::Build(reason) = &error else {
+        panic!("the gate must refuse the hop inside the process, not at the transport: {error:?}");
+    };
+    assert_eq!(reason, OPENAI_EGRESS_CLOSED);
+    served_rx
+        .try_recv()
+        .expect("the mirror answered the first hop");
+    assert_eq!(
+        server.await??,
+        0,
+        "the refused hop must never reach the mirror's redirect target through it"
+    );
+    Ok(())
+}

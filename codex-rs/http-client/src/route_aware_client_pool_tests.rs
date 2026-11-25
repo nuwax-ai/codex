@@ -432,9 +432,11 @@ async fn legacy_custom_ca_fallback_is_limited_to_reqwest_default() {
             // Same build path as RespectSystemProxy: resolved routes build
             // explicit clients, so an invalid custom CA fails the build.
             let error = pool
-                .client_for_url_with_resolver("http://127.0.0.1/update", |_| async {
-                    Ok(OutboundProxyRoute::Direct)
-                })
+                .client_for_url_with_resolver(
+                    "http://127.0.0.1/update",
+                    |_| async { Ok(OutboundProxyRoute::Direct) },
+                    pool.follows_redirects_manually(),
+                )
                 .await
                 .expect_err("resolved-default routes should reject invalid custom CAs");
 
@@ -442,9 +444,11 @@ async fn legacy_custom_ca_fallback_is_limited_to_reqwest_default() {
         }
         OutboundProxyPolicy::RespectSystemProxy => {
             let error = pool
-                .client_for_url_with_resolver("http://127.0.0.1/update", |_| async {
-                    Ok(OutboundProxyRoute::Direct)
-                })
+                .client_for_url_with_resolver(
+                    "http://127.0.0.1/update",
+                    |_| async { Ok(OutboundProxyRoute::Direct) },
+                    pool.follows_redirects_manually(),
+                )
                 .await
                 .expect_err("system-proxy routes should reject invalid custom CAs");
 
@@ -743,7 +747,9 @@ async fn bounds_cached_routes_and_rebuilds_an_evicted_route() {
         assert_eq!(clients.len(), MAX_CACHED_ROUTES);
         routes
             .iter()
-            .find(|(_, route)| !clients.contains_key(*route))
+            .find(|(_, route)| {
+                !clients.contains_key(&((*route).clone(), pool.follows_redirects_manually()))
+            })
             .map(|(request_url, _)| request_url.clone())
             .expect("one route should have been evicted")
     };
@@ -754,7 +760,10 @@ async fn bounds_cached_routes_and_rebuilds_an_evicted_route() {
 
     let clients = pool.clients.lock().expect("client cache lock");
     assert_eq!(clients.len(), MAX_CACHED_ROUTES);
-    assert!(clients.contains_key(&routes[&evicted_route]));
+    assert!(clients.contains_key(&(
+        routes[&evicted_route].clone(),
+        pool.follows_redirects_manually()
+    )));
 }
 
 #[tokio::test]
@@ -831,16 +840,19 @@ fn managed_request_timeout_covers_queued_transport_construction() {
             tokio::time::timeout(Duration::from_secs(/*secs*/ 5), pool.client_build.lock())
                 .await
                 .unwrap();
+        let manual_redirects = pool.follows_redirects_manually();
         assert!(
             pool.clients
                 .lock()
                 .unwrap()
-                .contains_key(&OutboundProxyRoute::TransportDefault)
+                .contains_key(&(OutboundProxyRoute::TransportDefault, manual_redirects))
         );
         let (_, _, backend) = pool
-            .client_for_url_with_resolver(&url, |_| async {
-                Ok(OutboundProxyRoute::TransportDefault)
-            })
+            .client_for_url_with_resolver(
+                &url,
+                |_| async { Ok(OutboundProxyRoute::TransportDefault) },
+                manual_redirects,
+            )
             .now_or_never()
             .unwrap()
             .unwrap();
@@ -1072,9 +1084,11 @@ async fn resolve_with(
 ) -> Result<TransportClient, RouteAwareClientPoolError> {
     let resolver = resolver.clone();
     let (_, client, _) = pool
-        .client_for_url_with_resolver(request_url, move |request_url| async move {
-            resolver.resolve(request_url).await
-        })
+        .client_for_url_with_resolver(
+            request_url,
+            move |request_url| async move { resolver.resolve(request_url).await },
+            pool.follows_redirects_manually(),
+        )
         .await?;
     Ok(client)
 }
@@ -1191,4 +1205,207 @@ impl Write for TestLogSink {
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
+}
+
+/// A guard refuses the URL the request would really connect to, not just the one
+/// the caller built it with.
+///
+/// The pool here keeps reqwest's own redirect handling (`ReqwestDefault`), which
+/// would follow the `Location` inside the transport where no caller-supplied
+/// policy runs. Attaching a guard must therefore also move the request onto the
+/// pool's manual redirect path, or the refusal would only cover hop one.
+#[tokio::test]
+async fn a_destination_guard_refuses_a_redirect_hop_before_it_connects() {
+    // The hop a guard would have to catch: everything after the first host.
+    let target = spawn_single_response_server(
+        "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
+        /*connections*/ 1,
+    );
+    let target_url = format!("http://{}/final", target.address);
+    let redirector = spawn_single_response_server(
+        &format!(
+            "HTTP/1.1 302 Found\r\nLocation: {target_url}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        ),
+        /*connections*/ 2,
+    );
+    let start_url = format!("http://{}/start", redirector.address);
+    let pool = RouteAwareClientPool::with_builder(
+        HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+        ClientRouteClass::Api,
+        HttpClientBuilder::new(),
+    );
+
+    // Both requests resolve to the injected route: that keeps the client build
+    // off the host's system-proxy lookup, which this crate's other redirect
+    // tests avoid the same way.
+    let direct = |_| async { Ok(OutboundProxyRoute::Direct) };
+    let get = |url: &str| {
+        reqwest::Request::new(
+            Method::GET,
+            reqwest::Url::parse(url).expect("request URL should parse"),
+        )
+    };
+
+    // Control: unguarded, the transport follows the redirect itself.
+    let unguarded = pool
+        .send_with_resolver_guarded(get(&start_url), direct, None)
+        .await
+        .expect("the redirect target is reachable");
+    assert_eq!(unguarded.status(), StatusCode::OK);
+    assert_eq!(redirector.served(), 1);
+    assert_eq!(target.served(), 1);
+
+    // Guarded: the same redirect is refused before the transport starts a
+    // connection to it, so the second server sees nothing new.
+    let blocked_host = format!("http://{}", target.address);
+    let refusal = "this destination is refused by test policy";
+    let guard: crate::DestinationGuard =
+        Arc::new(move |url: &str| url.starts_with(&blocked_host).then(|| refusal.to_string()));
+    let error = pool
+        .send_with_resolver_guarded(get(&start_url), direct, Some(guard))
+        .await
+        .expect_err("the redirect hop must be refused");
+    assert_eq!(
+        error.to_string(),
+        format!("failed to build route-aware request: {refusal}")
+    );
+    assert_eq!(redirector.served(), 2, "the first hop is still allowed");
+    assert_eq!(
+        target.served(),
+        1,
+        "the refused hop must never reach the other server"
+    );
+}
+
+/// A loopback server that answers `connections` requests with the same bytes.
+struct GuardTestServer {
+    address: std::net::SocketAddr,
+    served: Arc<AtomicUsize>,
+    stop: std::sync::mpsc::Sender<()>,
+    handle: Option<std::thread::JoinHandle<()>>,
+}
+
+impl GuardTestServer {
+    fn served(&self) -> usize {
+        self.served.load(Ordering::SeqCst)
+    }
+}
+
+impl Drop for GuardTestServer {
+    fn drop(&mut self) {
+        let _ = self.stop.send(());
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+fn spawn_single_response_server(response: &str, connections: usize) -> GuardTestServer {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).expect("guard test listener should bind");
+    let address = listener
+        .local_addr()
+        .expect("guard test listener should have an address");
+    listener
+        .set_nonblocking(true)
+        .expect("guard test listener should become nonblocking");
+    let response = response.to_string();
+    let served = Arc::new(AtomicUsize::new(0));
+    let served_by_server = Arc::clone(&served);
+    let (stop, stopped) = std::sync::mpsc::channel::<()>();
+    let handle = std::thread::spawn(move || {
+        for _ in 0..connections {
+            if stopped.try_recv().is_ok() {
+                return;
+            }
+            let deadline = Instant::now() + Duration::from_secs(5);
+            // A test that proves a connection never happens drops the server
+            // while this loop is still waiting: leave on the stop signal instead
+            // of sitting out the deadline and failing afterwards.
+            let mut stream = loop {
+                if stopped.try_recv().is_ok() {
+                    return;
+                }
+                match listener.accept() {
+                    Ok((connection, _peer)) => break connection,
+                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                        assert!(
+                            Instant::now() < deadline,
+                            "guard test server waited for a connection that never came"
+                        );
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(error) => panic!("guard test server should accept: {error}"),
+                }
+            };
+            stream
+                .set_nonblocking(false)
+                .expect("guard test stream should become blocking");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .expect("guard test stream should get a read timeout");
+            let mut buffer = [0_u8; 1024];
+            let read = stream
+                .read(&mut buffer)
+                .expect("guard test server should read the request");
+            assert!(read > 0, "guard test server should see a request line");
+            stream
+                .write_all(response.as_bytes())
+                .expect("guard test server should write the response");
+            served_by_server.fetch_add(1, Ordering::SeqCst);
+        }
+    });
+    GuardTestServer {
+        address,
+        served,
+        stop,
+        handle: Some(handle),
+    }
+}
+
+/// A guard decides WHO checks each hop, not WHETHER redirects are followed.
+///
+/// A pool built without redirects hands the first `302` straight back to the
+/// caller and never opens a second hop, so there is nothing for the guard to
+/// refuse: turning the redirect on just to inspect it would both follow a
+/// redirect the caller switched off and replace a response with an error.
+#[tokio::test]
+async fn a_destination_guard_does_not_turn_redirects_back_on() {
+    let target = spawn_single_response_server(
+        "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
+        /*connections*/ 1,
+    );
+    let target_url = format!("http://{}/final", target.address);
+    let redirector = spawn_single_response_server(
+        &format!(
+            "HTTP/1.1 302 Found\r\nLocation: {target_url}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        ),
+        /*connections*/ 1,
+    );
+    let start_url = format!("http://{}/start", redirector.address);
+    let pool = RouteAwareClientPool::new_without_redirects(
+        HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+        ClientRouteClass::Api,
+    );
+    let blocked_host = format!("http://{}", target.address);
+    let guard: crate::DestinationGuard = Arc::new(move |url: &str| {
+        url.starts_with(&blocked_host)
+            .then(|| "refused by test policy".to_string())
+    });
+    let request = reqwest::Request::new(
+        Method::GET,
+        reqwest::Url::parse(&start_url).expect("request URL should parse"),
+    );
+
+    let response = pool
+        .send_with_resolver_guarded(
+            request,
+            |_| async { Ok(OutboundProxyRoute::Direct) },
+            Some(guard),
+        )
+        .await
+        .expect("a pool without redirects returns the redirect itself, guard or not");
+
+    assert_eq!(response.status(), StatusCode::FOUND);
+    assert_eq!(redirector.served(), 1);
+    assert_eq!(target.served(), 0, "no second hop is opened");
 }
