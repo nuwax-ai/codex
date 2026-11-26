@@ -82,6 +82,8 @@ Rust crate、源码构建目标和 `codex-code-mode-host` 等辅助程序保持�
 项目中的 `.codex/` 属于项目级配置/资源入口，仍按既有规则加载，与上述用户级默认目录改名分开。
 npm 下载缓存是 **`~/.nuwax-harness-cache`**，用于保存
 对应版本和平台的主程序及辅助程序，与会话数据目录分开。
+容器等运行期 `HOME` 与安装期不一致时，用绝对路径 `NUWAX_HARNESS_CACHE_DIR`
+指定缓存根目录；ACP 适配器与 npm 包读同一个变量。
 
 ## 2. 直接运行：`NUWAX_*`
 

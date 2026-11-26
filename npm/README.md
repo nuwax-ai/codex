@@ -26,7 +26,8 @@ Anthropic 使用 `NUWAX_WIRE_API=anthropic`；原生 Responses 使用
 
 默认数据目录为 `~/.nuwax-harness`；显式 `CODEX_HOME` 优先且须为已存在目录。
 不读取或迁移旧数据目录。下载缓存为 `~/.nuwax-harness-cache`，包含同版本的配套辅助程序，
-请勿只复制主二进制而丢弃 helper。
+请勿只复制主二进制而丢弃 helper。容器等运行期 `HOME` 与安装期不一致时，可用绝对路径
+`NUWAX_HARNESS_CACHE_DIR` 覆盖缓存根目录（ACP 适配器读同一个变量）。
 
 完整参数、ACP 启动、Linux/容器、Windows 与排查示例见
 [环境变量启动指南](https://github.com/nuwax-ai/codex/tree/test#nuwax-harness)。

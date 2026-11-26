@@ -1,7 +1,7 @@
 // Shared native bundle installer for postinstall and both npm commands.
 import { createWriteStream, existsSync, mkdirSync, mkdtempSync, renameSync, rmdirSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
 import { createRequire } from "node:module";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -145,9 +145,22 @@ async function publishBundle(stagingDirectory, directory, stagingRoot) {
   }
 }
 
+// The cache root is shared with the ACP adapter: both read this variable and
+// otherwise fall back to the same per-user directory. Blank counts as unset.
+const CACHE_DIR_ENV = "NUWAX_HARNESS_CACHE_DIR";
+
+function cacheRoot() {
+  const override = process.env[CACHE_DIR_ENV]?.trim();
+  if (!override) return join(homedir(), ".nuwax-harness-cache");
+  if (!isAbsolute(override)) {
+    throw new Error(`${CACHE_DIR_ENV} must be an absolute path, got "${override}".`);
+  }
+  return override;
+}
+
 export async function ensureBinary() {
   const target = getTargetTriple();
-  const directory = join(homedir(), ".nuwax-harness-cache", VERSION, target);
+  const directory = join(cacheRoot(), VERSION, target);
   const binaryPath = join(directory, requiredBundleFiles()[0]);
   if (missingBundleFiles(directory).length === 0) return binaryPath;
 
