@@ -846,3 +846,46 @@ fn retired_plugin_ema_does_not_veto_a_later_runtime_registration() {
     ));
     assert_eq!(builder.build().server("docs").unwrap().config(), &expected);
 }
+
+/// A configured server name with characters a tool name cannot carry used to
+/// fail the server at startup ("Invalid MCP server name"), which the user only
+/// saw later as a failed `…__startup` tool call. It is now renamed with
+/// underscores so the server works, and the rename is logged.
+#[test]
+fn non_ascii_server_names_are_sanitized_instead_of_rejected() {
+    let mut builder = ResolvedMcpCatalog::builder();
+    builder.register(McpServerRegistration::from_config(
+        "图像服务".to_string(),
+        server("https://example.test/mcp"),
+    ));
+    let catalog = builder.build();
+
+    let name = "____";
+    assert!(
+        catalog.server(name).is_some(),
+        "the sanitized name must be the one the catalog knows: {:?}",
+        catalog.configured_servers().keys().collect::<Vec<_>>()
+    );
+    assert!(catalog.server("图像服务").is_none());
+}
+
+/// The disabled veto is keyed by name, so it has to use the same sanitized
+/// spelling — otherwise a name only the raw config knows could silence a server
+/// that is registered under its sanitized name.
+#[test]
+fn disabling_a_non_ascii_server_name_disables_the_sanitized_registration() {
+    let mut builder = ResolvedMcpCatalog::builder();
+    builder.register(McpServerRegistration::from_config(
+        "图像服务".to_string(),
+        server("https://example.test/mcp"),
+    ));
+    builder.disable("图像服务".to_string());
+    let catalog = builder.build();
+
+    // The veto disables rather than removes, so the row must survive with
+    // `enabled: false` under the sanitized name — a raw name would miss it.
+    let sanitized = catalog
+        .server("____")
+        .expect("the veto must reach the sanitized registration");
+    assert_eq!(sanitized.config.enabled, false);
+}

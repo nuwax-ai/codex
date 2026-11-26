@@ -279,7 +279,7 @@ impl McpServerRegistration {
         credential_policy: McpCredentialPolicy,
     ) -> Self {
         Self {
-            name,
+            name: normalize_server_name(name),
             source,
             config,
             credential_policy,
@@ -353,6 +353,34 @@ impl CatalogAction {
     }
 }
 
+/// Server names reach model-facing tool names (`<server>__<tool>`), environment
+/// lookups and log fields, so they have to be ASCII identifiers.
+///
+/// A configured name like `图像服务` used to fail that server at startup with
+/// "Invalid MCP server name …", which surfaced to the user as a failed tool call
+/// long after the config looked fine (`mcp list` showed it enabled). Replace
+/// every character a tool name cannot carry with `_` and log the rename — the
+/// same trade-off opencode and Claude Code make — so the server starts and the
+/// reason for the different name is in the log.
+fn normalize_server_name(name: String) -> String {
+    fn allowed(character: char) -> bool {
+        character.is_ascii_alphanumeric() || matches!(character, '_' | ':' | '@' | '/' | '.' | '-')
+    }
+    if name.chars().all(allowed) && !name.is_empty() {
+        return name;
+    }
+    let sanitized: String = name
+        .chars()
+        .map(|character| if allowed(character) { character } else { '_' })
+        .collect();
+    tracing::warn!(
+        configured = %name,
+        using = %sanitized,
+        "MCP server name has characters a tool name cannot carry; using the sanitized name"
+    );
+    sanitized
+}
+
 /// Mutable inputs used to produce an immutable resolved catalog.
 #[derive(Clone, Debug, Default)]
 pub struct McpCatalogBuilder {
@@ -376,12 +404,12 @@ impl McpCatalogBuilder {
 
     /// Applies the legacy name-scoped disabled veto after source resolution.
     pub fn disable(&mut self, name: String) {
-        self.disabled_server_names.insert(name);
+        self.disabled_server_names.insert(normalize_server_name(name));
     }
 
     pub fn remove_compatibility(&mut self, name: String, id: impl Into<String>) {
         self.actions.push(CatalogAction::Remove {
-            name,
+            name: normalize_server_name(name),
             source: McpServerSource::Compatibility { id: id.into() },
             precedence: RegistrationPrecedence::Compatibility,
         });
@@ -394,7 +422,7 @@ impl McpCatalogBuilder {
         contribution_order: usize,
     ) {
         self.actions.push(CatalogAction::Remove {
-            name,
+            name: normalize_server_name(name),
             source: McpServerSource::Extension {
                 id: id.into(),
                 host_owned_apps: false,
