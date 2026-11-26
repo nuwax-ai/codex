@@ -444,6 +444,42 @@ fn writes_mode_does_not_require_approval_for_read_only_tools() {
     );
 }
 
+/// `approval_mode = "approve"` is the operator saying "never ask for this
+/// tool". It has to win over every annotation, including a tool that declares
+/// itself destructive — otherwise the one setting meant to silence prompts
+/// still prompts.
+#[test]
+fn approve_mode_never_asks_whatever_the_annotations_say() {
+    let cases = [
+        (/*annotations*/ None, "no annotations"),
+        (Some(annotations(Some(true), None, None)), "read-only"),
+        (Some(annotations(Some(false), Some(true), Some(true))), "destructive + open-world"),
+        (Some(annotations(None, None, None)), "annotations present but empty"),
+    ];
+    for (annotations, label) in cases {
+        assert_eq!(
+            requires_mcp_tool_approval_for_mode(annotations.as_ref(), AppToolApproval::Approve),
+            false,
+            "approve mode must not ask ({label})"
+        );
+    }
+}
+
+/// `approval_mode = "prompt"` asks even for tools that call themselves
+/// read-only: the operator chose to review every call.
+#[test]
+fn prompt_mode_asks_even_for_read_only_tools() {
+    let read_only = annotations(Some(true), Some(false), Some(false));
+    assert_eq!(
+        requires_mcp_tool_approval_for_mode(Some(&read_only), AppToolApproval::Prompt),
+        true
+    );
+    assert_eq!(
+        requires_mcp_tool_approval_for_mode(/*annotations*/ None, AppToolApproval::Prompt),
+        true
+    );
+}
+
 #[test]
 fn prompting_modes_do_not_allow_persistent_remember() {
     for approval_mode in [AppToolApproval::Prompt, AppToolApproval::Writes] {
