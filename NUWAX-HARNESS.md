@@ -527,9 +527,20 @@ GLM-5.3 全系仅 `max`/`high`/`low`，GLM-5.2 为七档（`low`/`medium` 均映
 不会透传给 app-server 子进程，因此引擎侧不会看到孤儿启动组（`NUWAX_MODEL` 例外地
 留在子进程环境里：单独设置它本来就合法，只换模型不换端点）。其余引擎开关
 （`NUWAX_IMAGE_MAX_BYTES`、`NUWAX_REQUEST_IMAGE_MAX_BYTES`、`NUWAX_TOOL_SEARCH`、
-`NUWAX_OPENAI_EGRESS`、`NUWAX_AUTO_COMPACT_*`、`NUWAX_HOME`）由 app-server 子进程
-读取，与 CLI 语义相同。无前缀的 `MODEL_PROVIDER`、
+`NUWAX_OPENAI_EGRESS`、`NUWAX_AUTO_COMPACT_*`、`NUWAX_UPDATE_PLAN`、`NUWAX_HOME`）由
+app-server 子进程读取，与 CLI 语义相同。无前缀的 `MODEL_PROVIDER`、
 `INITIAL_AGENT_MODE`、`NO_BROWSER`、`APP_SERVER_LOGS` 不设别名。
+
+其中 `NUWAX_UPDATE_PLAN`（`true`/`false`，见 §4 变量表）**不在**适配器消费清单里，
+会原样透传给 app-server，所以在 pod / ACP 场景只要把变量放进 agent 进程环境即可，
+不需要改适配器或客户端：
+
+```bash
+NUWAX_UPDATE_PLAN=true <启动 ACP agent 的那条命令>
+```
+
+本地 `make harness-local`（nuwax-client）默认也会带上 `NUWAX_UPDATE_PLAN=true`，
+需要关闭时用 `NUWAX_UPDATE_PLAN=false make harness-local`。
 
 ```bash
 export NUWAX_PATH='/absolute/path/to/nuwax-harness'
