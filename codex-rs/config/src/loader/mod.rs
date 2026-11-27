@@ -806,11 +806,6 @@ pub async fn load_requirements_toml(
     }
 }
 
-/// Picks the fork-named system file when it exists, otherwise the Codex-named one.
-///
-/// The second element says whether BOTH exist: the caller warns, because silently
-/// ignoring one of two admin-provided files is exactly the kind of divergence this
-/// fork refuses elsewhere.
 /// The system configuration directories this build honors, most specific first.
 ///
 /// For consumers that resolve sibling data rather than the config file itself: which
@@ -825,10 +820,38 @@ pub fn system_config_dirs() -> io::Result<[AbsolutePathBuf; 2]> {
     ])
 }
 
+/// Whether `path` names something on disk.
+///
+/// `Path::exists()` answers `false` for every error, so an unreadable directory would
+/// look exactly like an absent file and the Codex fallback would take over without a
+/// word. Only "nothing there" means absent; anything else is reported and treated as
+/// absent *with a warning* naming the path, because a broken optional file must not
+/// keep the CLI from starting.
+#[cfg(unix)]
+fn path_is_present(path: &Path) -> bool {
+    match std::fs::symlink_metadata(path) {
+        Ok(_) => true,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => false,
+        Err(error) => {
+            tracing::warn!(
+                path = %path.display(),
+                %error,
+                "cannot stat a system configuration file; treating it as absent"
+            );
+            false
+        }
+    }
+}
+
+/// Picks the fork-named system file when it exists, otherwise the Codex-named one.
+///
+/// The second element says whether BOTH exist: the caller warns, because silently
+/// ignoring one of two admin-provided files is exactly the kind of divergence this
+/// fork refuses elsewhere.
 #[cfg(unix)]
 fn choose_system_file(preferred: &Path, fallback: &Path) -> (std::path::PathBuf, bool) {
-    let preferred_exists = preferred.exists();
-    let fallback_exists = fallback.exists();
+    let preferred_exists = path_is_present(preferred);
+    let fallback_exists = path_is_present(fallback);
     if preferred_exists {
         (preferred.to_path_buf(), fallback_exists)
     } else {
