@@ -363,11 +363,25 @@ impl HttpClientExt for RigHttpClient {
     ) -> impl Future<Output = Result<Response<LazyBody>, Error>> + WasmCompatSend + 'static {
         let request = self.prepare(request);
         let inner = rig_reqwest::ReqwestClient::from(self.inner.clone());
+        // The future must be `'static`, so copy the wire name out of `self`.
+        let protocol = self.protocol;
         async move {
-            HttpClientExt::send(&inner, request?)
+            let request = request?;
+            // Debug-only: record the exact request and response bytes.
+            let wire_slot = crate::wire_capture::begin_for(&request, wire_protocol_name(protocol));
+            let sent = HttpClientExt::send(&inner, request)
                 .await
                 .map_err(sanitize_error)
-                .map(sanitize_response)
+                .map(sanitize_response);
+            match (sent, wire_slot) {
+                (Ok(response), Some(slot)) => Ok(response.map(|body| slot.tee_lazy(body))),
+                (Ok(response), None) => Ok(response),
+                (Err(error), Some(slot)) => {
+                    slot.record_error(&error.to_string());
+                    Err(error)
+                }
+                (Err(error), None) => Err(error),
+            }
         }
     }
 
@@ -470,14 +484,26 @@ impl HttpClientExt for RigHttpClient {
                 None
             };
             budget.check_body(request.body().len(), image_costs)?;
-            let response = crate::request_retry::send_streaming(
+            // Debug-only: capture the bytes this attempt sends and receives.
+            let wire_slot =
+                crate::wire_capture::begin_for(&request, wire_protocol_name(self.protocol));
+            let response = match crate::request_retry::send_streaming(
                 &self.inner,
                 request,
                 self.retry.as_ref(),
                 &self.final_request_recorder,
             )
             .await
-            .map_err(sanitize_error)?;
+            .map_err(sanitize_error)
+            {
+                Ok(response) => response,
+                Err(error) => {
+                    if let Some(slot) = &wire_slot {
+                        slot.record_error(&error.to_string());
+                    }
+                    return Err(error);
+                }
+            };
             // Compatible gateways may expose only a trace/log correlation ID.
             // Keep canonical request IDs first; this never replaces the model's
             // response ID carried in the SSE body.
@@ -497,9 +523,13 @@ impl HttpClientExt for RigHttpClient {
             let check_terminal = response.status().is_success();
             let sse_recorder = self.responses_sse_recorder.clone();
             let anthropic_sse_tee = self.anthropic_sse_tee.clone();
-            Ok(response.map(|body| {
+            Ok(response.map(move |body| {
                 let body = Box::pin(body.map(|chunk| chunk.map_err(sanitize_error)))
                     as rig_core::http_client::BoxedStream;
+                let body = match &wire_slot {
+                    Some(slot) => slot.tee_stream(body),
+                    None => body,
+                };
                 match self.protocol {
                     // Responses passthrough consumes the raw SSE bytes with
                     // codex-api's decoder and its own strict terminal policy;
@@ -571,6 +601,15 @@ fn tee_wire_bytes(
             })) as rig_core::http_client::BoxedStream
         }
         None => body,
+    }
+}
+
+/// Stable file-name token for a wire's capture files.
+fn wire_protocol_name(protocol: crate::RigProtocol) -> &'static str {
+    match protocol {
+        crate::RigProtocol::Responses => "responses",
+        crate::RigProtocol::Chat => "chat",
+        crate::RigProtocol::Anthropic => "anthropic",
     }
 }
 

@@ -29,6 +29,7 @@ mod response_tools;
 mod responses;
 mod sse;
 mod stream;
+mod wire_capture;
 mod stream_pump;
 mod transport;
 mod transport_identity;
