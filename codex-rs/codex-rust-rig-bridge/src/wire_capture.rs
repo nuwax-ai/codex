@@ -23,11 +23,11 @@
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicU64;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::OnceLock;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 
 use bytes::Bytes;
 use futures::StreamExt;
@@ -96,7 +96,14 @@ impl Capture {
         let json_path = stem.with_extension("request.json");
         let response_path = stem.with_extension("response.sse");
 
-        std::fs::write(&body_path, body).ok()?;
+        if let Err(error) = std::fs::write(&body_path, body) {
+            tracing::warn!(
+                path = %body_path.display(),
+                %error,
+                "wire capture: cannot write the request body; capture is off for this call"
+            );
+            return None;
+        }
         let parsed = serde_json::from_slice::<serde_json::Value>(body).ok();
         let summary = serde_json::json!({
             "method": method,
@@ -112,39 +119,87 @@ impl Capture {
                 "response": response_path.display().to_string(),
             },
         });
-        std::fs::write(&json_path, format!("{summary:#}\n")).ok()?;
+        if let Err(error) = std::fs::write(&json_path, format!("{summary:#}\n")) {
+            tracing::warn!(
+                path = %json_path.display(),
+                %error,
+                "wire capture: cannot write the request summary"
+            );
+        }
 
         // Keep the file open for the whole response: chunks arrive over time
         // and this slot is the only writer.
-        let file = File::create(&response_path).ok()?;
+        let file = match File::create(&response_path) {
+            Ok(file) => file,
+            Err(error) => {
+                tracing::warn!(
+                    path = %response_path.display(),
+                    %error,
+                    "wire capture: cannot create the response file; capture is off for this call"
+                );
+                return None;
+            }
+        };
         Some(Arc::new(Slot {
             label: format!("{index:04}-{protocol}"),
-            file: Mutex::new(Some(file)),
+            cap_bytes: MAX_RESPONSE_BYTES,
+            state: Mutex::new(SlotState {
+                file: Some(file),
+                written: 0,
+            }),
         }))
     }
 }
 
+/// Per-response byte cap. A runaway stream would otherwise fill the disk of the machine
+/// this is meant to debug; the cap is reported, never silent.
+const MAX_RESPONSE_BYTES: u64 = 64 * 1024 * 1024;
+
 /// One model call's response sink.
 pub(crate) struct Slot {
     label: String,
-    /// `None` once the response is complete, so a late chunk cannot reopen it.
-    file: Mutex<Option<File>>,
+    cap_bytes: u64,
+    /// `None` once the response is complete (or the cap was hit), so a late chunk cannot
+    /// reopen it.
+    state: Mutex<SlotState>,
+}
+
+#[derive(Default)]
+struct SlotState {
+    file: Option<File>,
+    written: u64,
 }
 
 impl Slot {
     fn append(&self, bytes: &[u8]) {
-        if let Ok(mut guard) = self.file.lock()
-            && let Some(file) = guard.as_mut()
-            && let Err(error) = file.write_all(bytes)
-        {
-            tracing::warn!(label = %self.label, %error, "wire capture: write failed");
-            *guard = None;
+        let Ok(mut state) = self.state.lock() else {
+            return;
+        };
+        let Some(mut file) = state.file.take() else {
+            return;
+        };
+        if state.written.saturating_add(bytes.len() as u64) > self.cap_bytes {
+            tracing::warn!(
+                label = %self.label,
+                cap_bytes = self.cap_bytes,
+                "wire capture: response cap reached; the rest of this response is not captured"
+            );
+            return;
+        }
+        match file.write_all(bytes) {
+            Ok(()) => {
+                state.written += bytes.len() as u64;
+                state.file = Some(file);
+            }
+            Err(error) => {
+                tracing::warn!(label = %self.label, %error, "wire capture: write failed");
+            }
         }
     }
 
     fn finish(&self) {
-        if let Ok(mut guard) = self.file.lock()
-            && let Some(file) = guard.take()
+        if let Ok(mut state) = self.state.lock()
+            && let Some(file) = state.file.take()
         {
             let _ = file.sync_all();
         }
