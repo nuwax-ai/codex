@@ -80,6 +80,86 @@ fn body_indicates_context_window_exceeded(body_text: &str) -> bool {
     MARKERS.iter().any(|marker| lowered.contains(marker))
 }
 
+/// Fork (nuwax-codex, 2026-11-27): the longest provider explanation kept for
+/// display. Long enough for a full quota/vendor sentence, short enough that a
+/// gateway HTML page cannot flood the error line or the rollout.
+const PROVIDER_ERROR_MESSAGE_MAX_CHARS: usize = 300;
+
+/// Fork (nuwax-codex, 2026-11-27): returns the provider's own explanation for a
+/// rejected request, clipped for display.
+///
+/// Vendor gateways reject with bodies upstream does not model — Zhipu answers a
+/// 429 with `{"error":{"code":"1316","message":"已达到 5 小时使用上限…"}}`, which
+/// matches no OpenAI error `type`. Upstream then kept only the HTTP status, so
+/// the user could not tell a provider quota rejection from a harness bug.
+/// This reads the human-readable text without interpreting the vendor:
+/// `error.message` → top-level `message` → `error.code` → the raw body.
+///
+/// Only the message is used, never the whole JSON: a provider body can echo the
+/// request. Redaction is deliberately not applied here — the raw body already
+/// reaches the bridge's error log — so this only widens what the user sees.
+fn provider_error_message(body_text: &str) -> Option<String> {
+    let trimmed = body_text.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Ok(parsed) = serde_json::from_str::<Value>(trimmed) {
+        let error = parsed.get("error");
+        if let Some(message) = error
+            .and_then(|error| error.get("message"))
+            .and_then(Value::as_str)
+            .filter(|message| !message.trim().is_empty())
+        {
+            return clip_provider_message(message);
+        }
+        if let Some(code) = error
+            .and_then(|error| error.get("code"))
+            .and_then(|code| {
+                code.as_str()
+                    .map(str::to_string)
+                    .or_else(|| code.as_i64().map(|code| code.to_string()))
+            })
+        {
+            return clip_provider_message(&format!("code: {code}"));
+        }
+        if let Some(message) = parsed
+            .get("message")
+            .and_then(Value::as_str)
+            .filter(|message| !message.trim().is_empty())
+        {
+            return clip_provider_message(message);
+        }
+    }
+    clip_provider_message(trimmed)
+}
+
+/// Collapses control characters and whitespace runs into single spaces, then
+/// truncates. `None` when nothing readable remains.
+fn clip_provider_message(text: &str) -> Option<String> {
+    let flattened: String = text
+        .chars()
+        .map(|character| {
+            if character.is_control() {
+                ' '
+            } else {
+                character
+            }
+        })
+        .collect();
+    let collapsed = flattened.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.is_empty() {
+        return None;
+    }
+    let mut clipped: String = collapsed
+        .chars()
+        .take(PROVIDER_ERROR_MESSAGE_MAX_CHARS)
+        .collect();
+    if collapsed.chars().count() > PROVIDER_ERROR_MESSAGE_MAX_CHARS {
+        clipped.push('…');
+    }
+    Some(clipped)
+}
+
 fn map_api_error_details(err: ApiError) -> CodexErr {
     match err {
         ApiError::ContextWindowExceeded => CodexErr::ContextWindowExceeded,
@@ -331,6 +411,7 @@ fn map_api_error_details(err: ApiError) -> CodexErr {
                     CodexErr::RetryLimit(RetryLimitReachedError {
                         status,
                         request_id: extract_request_tracking_id(headers.as_ref()),
+                        message: provider_error_message(&body_text),
                     })
                 } else {
                     CodexErr::UnexpectedStatus(UnexpectedResponseError {
@@ -351,6 +432,7 @@ fn map_api_error_details(err: ApiError) -> CodexErr {
             TransportError::RetryLimit => CodexErr::RetryLimit(RetryLimitReachedError {
                 status: http::StatusCode::INTERNAL_SERVER_ERROR,
                 request_id: None,
+                message: None,
             }),
             TransportError::Timeout => CodexErr::RequestTimeout,
             TransportError::Policy(denied) => CodexErr::Fatal(denied.to_string()),

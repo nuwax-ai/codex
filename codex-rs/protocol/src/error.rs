@@ -761,19 +761,26 @@ fn truncate_text(content: &str, policy: TruncationPolicy) -> String {
 pub struct RetryLimitReachedError {
     pub status: StatusCode,
     pub request_id: Option<String>,
+    /// The provider's own explanation for the rejection, when it sent one.
+    ///
+    /// Fork (nuwax-codex, 2026-11-27): upstream drops the provider body here, so
+    /// a vendor 429 (quota window exhausted, plan expired, ...) surfaced as
+    /// `exceeded retry limit, last status: 429 Too Many Requests` with no way to
+    /// tell a provider rejection from a harness bug. The text is already
+    /// clipped and whitespace-collapsed by the mapper that filled it.
+    pub message: Option<String>,
 }
 
 impl std::fmt::Display for RetryLimitReachedError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "exceeded retry limit, last status: {}{}",
-            self.status,
-            self.request_id
-                .as_ref()
-                .map(|id| format!(", request id: {id}"))
-                .unwrap_or_default()
-        )
+        write!(f, "exceeded retry limit, last status: {}", self.status)?;
+        if let Some(id) = self.request_id.as_ref() {
+            write!(f, ", request id: {id}")?;
+        }
+        if let Some(message) = self.message.as_ref() {
+            write!(f, ": {message}")?;
+        }
+        Ok(())
     }
 }
 

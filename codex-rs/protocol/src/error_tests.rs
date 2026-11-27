@@ -49,6 +49,7 @@ fn retryability_preserves_error_details_distinctions() {
             CodexErr::RetryLimit(RetryLimitReachedError {
                 status: StatusCode::TOO_MANY_REQUESTS,
                 request_id: None,
+                message: None,
             }),
             false,
         ),

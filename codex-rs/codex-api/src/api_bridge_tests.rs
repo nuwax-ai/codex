@@ -156,7 +156,8 @@ async fn http_retry_deadline_survives_mapping_and_respects_terminal_errors() {
                         http_status_code: Some(429),
                     },
                     Some(429),
-                    "exceeded retry limit, last status: 429 Too Many Requests".to_string(),
+                    "exceeded retry limit, last status: 429 Too Many Requests: sensitive upstream detail"
+                        .to_string(),
                 ),
             );
         }
@@ -1006,5 +1007,96 @@ fn map_api_error_classifies_payload_too_large_as_request_too_large() {
     assert!(
         matches!(err.details(), CodexErrorDetails::ContextWindowExceeded),
         "a context-window body keeps its overflow classification"
+    );
+}
+
+/// Fork (nuwax-codex, 2026-11-27): a vendor 429 that matches no OpenAI error
+/// `type` used to surface as `exceeded retry limit, last status: 429 Too Many
+/// Requests`, which hid whether the provider or the harness rejected the call.
+/// The provider's own sentence now rides along.
+#[test]
+fn vendor_429_keeps_the_provider_message() {
+    let err = map_api_error(ApiError::Transport(TransportError::Http {
+        status: http::StatusCode::TOO_MANY_REQUESTS,
+        url: None,
+        headers: None,
+        body: Some(
+            r#"{"error":{"code":"1316","message":"已达到 5 小时使用上限。您的限额将在 22:00 重置。"}}"#
+                .to_string(),
+        ),
+        retry_after: None,
+    }));
+    assert_eq!(
+        err.to_string(),
+        "exceeded retry limit, last status: 429 Too Many Requests: 已达到 5 小时使用上限。您的限额将在 22:00 重置。"
+    );
+    // The classification stays the vendor-neutral one: this build does not
+    // interpret vendor business codes.
+    assert_eq!(
+        err.to_codex_protocol_error(),
+        CodexErrorInfo::ResponseTooManyFailedAttempts {
+            http_status_code: Some(429),
+        }
+    );
+}
+
+/// A body with only a business code still says something; the code beats a
+/// generic status line.
+#[test]
+fn vendor_429_falls_back_to_the_business_code() {
+    let err = map_api_error(ApiError::Transport(TransportError::Http {
+        status: http::StatusCode::TOO_MANY_REQUESTS,
+        url: None,
+        headers: None,
+        body: Some(r#"{"error":{"code":1302}}"#.to_string()),
+        retry_after: None,
+    }));
+    assert_eq!(
+        err.to_string(),
+        "exceeded retry limit, last status: 429 Too Many Requests: code: 1302"
+    );
+}
+
+/// A non-JSON rejection (a CDN HTML page, plain text) is flattened and clipped
+/// instead of being dropped or flooding the error line.
+#[test]
+fn non_json_rejection_is_flattened_and_clipped() {
+    let long = format!("Service Unavailable\n\n{}", "x".repeat(1_000));
+    let err = map_api_error(ApiError::Transport(TransportError::Http {
+        status: http::StatusCode::TOO_MANY_REQUESTS,
+        url: None,
+        headers: None,
+        body: Some(long),
+        retry_after: None,
+    }));
+    let message = err.to_string();
+    assert!(
+        message.starts_with("exceeded retry limit, last status: 429 Too Many Requests: Service Unavailable x"),
+        "{message}"
+    );
+    assert!(message.ends_with('…'), "clipped text ends with an ellipsis: {message}");
+    let detail = message
+        .rsplit_once(": ")
+        .map(|(_, detail)| detail)
+        .expect("message detail");
+    assert!(
+        detail.chars().count() <= super::PROVIDER_ERROR_MESSAGE_MAX_CHARS + 1,
+        "detail must stay within the clip budget"
+    );
+}
+
+/// No body means nothing to show, and the original wording must survive.
+#[test]
+fn empty_429_body_keeps_the_original_wording() {
+    let err = map_api_error(ApiError::Transport(TransportError::Http {
+        status: http::StatusCode::TOO_MANY_REQUESTS,
+        url: None,
+        headers: None,
+        body: None,
+        retry_after: None,
+    }));
+    assert_eq!(
+        err.to_string(),
+        "exceeded retry limit, last status: 429 Too Many Requests"
     );
 }
