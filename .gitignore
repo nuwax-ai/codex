@@ -111,3 +111,4 @@ __pycache__/
 
 # Gitea CI local config (credentials)
 scripts/gitea-ci/.env
+codex-rs/codex-rust-rig-bridge/target
