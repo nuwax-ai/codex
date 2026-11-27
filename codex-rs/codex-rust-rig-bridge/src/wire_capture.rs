@@ -1,7 +1,8 @@
 //! Debug-only capture of the model wire, for a developer's own machine.
 //!
-//! Enable with `CODEX_RIG_WIRE_CAPTURE_DIR=<dir>`. Every model request then
-//! leaves two files there, named by a process-wide sequence number:
+//! Enable with `NUWAX_RIG_WIRE_CAPTURE_DIR=<dir>` (the fork's namespace; the
+//! older `CODEX_RIG_WIRE_CAPTURE_DIR` still works as an alias). Every model
+//! request then leaves three files there, named by a process-wide sequence number:
 //!
 //! ```text
 //! 0001-anthropic.request.json   method, url, headers, body (parsed when JSON)
@@ -34,7 +35,10 @@ use futures::StreamExt;
 use rig_core::http_client::BoxedStream;
 use rig_core::http_client::LazyBody;
 
-const ENV_VAR: &str = "CODEX_RIG_WIRE_CAPTURE_DIR";
+/// The fork's name for the capture directory.
+const ENV_VAR: &str = "NUWAX_RIG_WIRE_CAPTURE_DIR";
+/// Pre-rename spelling, still honored so an existing local workflow keeps working.
+const LEGACY_ENV_VAR: &str = "CODEX_RIG_WIRE_CAPTURE_DIR";
 
 static CAPTURE: OnceLock<Option<Arc<Capture>>> = OnceLock::new();
 
@@ -42,16 +46,18 @@ static CAPTURE: OnceLock<Option<Arc<Capture>>> = OnceLock::new();
 pub(crate) fn enabled() -> Option<&'static Arc<Capture>> {
     CAPTURE
         .get_or_init(|| {
-            let dir = std::env::var_os(ENV_VAR)?;
-            if dir.is_empty() {
-                return None;
-            }
+            // An empty value counts as unset, so a stray `export VAR=` cannot shadow the
+            // other spelling.
+            let dir = [ENV_VAR, LEGACY_ENV_VAR]
+                .into_iter()
+                .filter_map(std::env::var_os)
+                .find(|dir| !dir.is_empty())?;
             match Capture::at(PathBuf::from(dir)) {
                 Ok(capture) => Some(Arc::new(capture)),
                 Err(error) => {
                     tracing::warn!(
                         %error,
-                        "CODEX_RIG_WIRE_CAPTURE_DIR is set but unusable; wire capture is off"
+                        "the wire capture directory is set but unusable; wire capture is off"
                     );
                     None
                 }
