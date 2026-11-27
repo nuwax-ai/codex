@@ -316,7 +316,12 @@ async fn skill_catalog_deltas_survive_resume_and_rebuild_after_compaction() -> R
                 .features
                 .enable(Feature::SkillCatalogDeltas)
                 .expect("enable skill catalog deltas");
-            config.skill_max_context_tokens = NonZeroUsize::new(172);
+            // Fork (nuwax-codex): the bundled system skills no longer ship
+            // `openai-docs`, so the tight budget from upstream (172) leaves room
+            // for `translation` and the "compaction omitted it" premise below
+            // stops holding. 150 restores the same exhaustion point with one
+            // fewer system skill; re-tune if the bundled catalog changes size.
+            config.skill_max_context_tokens = NonZeroUsize::new(150);
         })
         .restart_with_auto_env(&server, &resumed)
         .await?;

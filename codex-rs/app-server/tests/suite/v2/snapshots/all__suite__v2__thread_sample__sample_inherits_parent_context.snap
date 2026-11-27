@@ -16,12 +16,13 @@ Settings:
   stream: true
   tool_choice: "auto"
 -- request 1 (turn) --
-00:additional_tools/developer (3; hash=bf13940dee826ebd):
-        - namespace/functions; hash=028af59ad835936d
+00:additional_tools/developer (3; hash=c7512c9fdceb3c28):
+        - namespace/functions; hash=ca01bac5674ed9ec
           - function/exec_command
           - function/write_stdin
           - function/request_user_input
           - function/request_permissions
+          - custom/apply_patch
           - function/view_image
           - function/get_goal
           - function/create_goal
@@ -47,9 +48,8 @@ Settings:
         - `r1` = `<SKILLS_ROOT>/.system`
         ### Available skills
         - imagegen: Generate or edit raster images when the task benefits from AI-created bitmap visuals such as...ctly in HTML/CSS/canvas. (file: r1/imagegen/SKILL.md) [hash=311a0e6c6c4fb754]
-        - openai-docs: Use for Codex models/pricing, scheduled tasks, skills, settings, setup, troubleshooting, ...merely mention Codex. (file: r1/openai-docs/SKILL.md) [hash=1c1693bbc4dfd0f7]
         - skill-creator: Create or update a nuwax-harness skill with appropriately scoped instructions and any n...pporting resources. (file: r1/skill-creator/SKILL.md) [hash=83f42067e2a43063]
-        - skill-installer: Install nuwax-harness skills into $CODEX_HOME/skills from a curated list or a GitHub ...g private repos). (file: r1/skill-installer/SKILL.md) [hash=87f93dfb405548b3]
+        - skill-installer: Install nuwax-harness skills into the harness skills directory (~/.nuwax-harness/skil...g private repos). (file: r1/skill-installer/SKILL.md) [hash=d9a116a109e46800]
         - ego-browser: When you need a browser, read this Skill by default. Use it to open and operate websites,...s or other web tools. (file: r0/ego-browser/SKILL.md) [hash=4fabf3c45182f1fb]
         - find-skills: Helps users discover and install agent skills when they ask questions like "how do I do X...an installable skill. (file: r0/find-skills/SKILL.md) [hash=48b9e99d9200af8d]
         - gpui-kit: How to build desktop applications with GPUI Kit, the Rust framework published as the gpui-ki...l for the Design Guides. (file: r0/gpui-kit/SKILL.md) [hash=e3d2a0da267d996b]
@@ -83,12 +83,13 @@ Settings:
 ## Window 2 (after request 2: input repeated)
 Settings: same as window 1
 -- request 3 (turn) --
-00:additional_tools/developer (3; hash=bf13940dee826ebd):
-        - namespace/functions; hash=028af59ad835936d
+00:additional_tools/developer (3; hash=c7512c9fdceb3c28):
+        - namespace/functions; hash=ca01bac5674ed9ec
           - function/exec_command
           - function/write_stdin
           - function/request_user_input
           - function/request_permissions
+          - custom/apply_patch
           - function/view_image
           - function/get_goal
           - function/create_goal
@@ -114,9 +115,8 @@ Settings: same as window 1
         - `r1` = `<SKILLS_ROOT>/.system`
         ### Available skills
         - imagegen: Generate or edit raster images when the task benefits from AI-created bitmap visuals such as...ctly in HTML/CSS/canvas. (file: r1/imagegen/SKILL.md) [hash=311a0e6c6c4fb754]
-        - openai-docs: Use for Codex models/pricing, scheduled tasks, skills, settings, setup, troubleshooting, ...merely mention Codex. (file: r1/openai-docs/SKILL.md) [hash=1c1693bbc4dfd0f7]
         - skill-creator: Create or update a nuwax-harness skill with appropriately scoped instructions and any n...pporting resources. (file: r1/skill-creator/SKILL.md) [hash=83f42067e2a43063]
-        - skill-installer: Install nuwax-harness skills into $CODEX_HOME/skills from a curated list or a GitHub ...g private repos). (file: r1/skill-installer/SKILL.md) [hash=87f93dfb405548b3]
+        - skill-installer: Install nuwax-harness skills into the harness skills directory (~/.nuwax-harness/skil...g private repos). (file: r1/skill-installer/SKILL.md) [hash=d9a116a109e46800]
         - ego-browser: When you need a browser, read this Skill by default. Use it to open and operate websites,...s or other web tools. (file: r0/ego-browser/SKILL.md) [hash=4fabf3c45182f1fb]
         - find-skills: Helps users discover and install agent skills when they ask questions like "how do I do X...an installable skill. (file: r0/find-skills/SKILL.md) [hash=48b9e99d9200af8d]
         - gpui-kit: How to build desktop applications with GPUI Kit, the Rust framework published as the gpui-ki...l for the Design Guides. (file: r0/gpui-kit/SKILL.md) [hash=e3d2a0da267d996b]
@@ -149,12 +149,13 @@ Settings: same as window 1
 ## Window 3 (after request 3: input repeated)
 Settings: same as window 1
 -- request 4 (turn) --
-00:additional_tools/developer (3; hash=bf13940dee826ebd):
-        - namespace/functions; hash=028af59ad835936d
+00:additional_tools/developer (3; hash=c7512c9fdceb3c28):
+        - namespace/functions; hash=ca01bac5674ed9ec
           - function/exec_command
           - function/write_stdin
           - function/request_user_input
           - function/request_permissions
+          - custom/apply_patch
           - function/view_image
           - function/get_goal
           - function/create_goal
@@ -180,9 +181,8 @@ Settings: same as window 1
         - `r1` = `<SKILLS_ROOT>/.system`
         ### Available skills
         - imagegen: Generate or edit raster images when the task benefits from AI-created bitmap visuals such as...ctly in HTML/CSS/canvas. (file: r1/imagegen/SKILL.md) [hash=311a0e6c6c4fb754]
-        - openai-docs: Use for Codex models/pricing, scheduled tasks, skills, settings, setup, troubleshooting, ...merely mention Codex. (file: r1/openai-docs/SKILL.md) [hash=1c1693bbc4dfd0f7]
         - skill-creator: Create or update a nuwax-harness skill with appropriately scoped instructions and any n...pporting resources. (file: r1/skill-creator/SKILL.md) [hash=83f42067e2a43063]
-        - skill-installer: Install nuwax-harness skills into $CODEX_HOME/skills from a curated list or a GitHub ...g private repos). (file: r1/skill-installer/SKILL.md) [hash=87f93dfb405548b3]
+        - skill-installer: Install nuwax-harness skills into the harness skills directory (~/.nuwax-harness/skil...g private repos). (file: r1/skill-installer/SKILL.md) [hash=d9a116a109e46800]
         - ego-browser: When you need a browser, read this Skill by default. Use it to open and operate websites,...s or other web tools. (file: r0/ego-browser/SKILL.md) [hash=4fabf3c45182f1fb]
         - find-skills: Helps users discover and install agent skills when they ask questions like "how do I do X...an installable skill. (file: r0/find-skills/SKILL.md) [hash=48b9e99d9200af8d]
         - gpui-kit: How to build desktop applications with GPUI Kit, the Rust framework published as the gpui-ki...l for the Design Guides. (file: r0/gpui-kit/SKILL.md) [hash=e3d2a0da267d996b]

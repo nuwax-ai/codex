@@ -60,9 +60,8 @@ Settings:
         - `r1` = `<SKILLS_ROOT>/.system`
         ### Available skills
         - imagegen: Generate or edit raster images when the task benefits from AI-created bitmap visuals such as...ctly in HTML/CSS/canvas. (file: r1/imagegen/SKILL.md) [hash=311a0e6c6c4fb754]
-        - openai-docs: Use for Codex models/pricing, scheduled tasks, skills, settings, setup, troubleshooting, ...merely mention Codex. (file: r1/openai-docs/SKILL.md) [hash=1c1693bbc4dfd0f7]
         - skill-creator: Create or update a nuwax-harness skill with appropriately scoped instructions and any n...pporting resources. (file: r1/skill-creator/SKILL.md) [hash=83f42067e2a43063]
-        - skill-installer: Install nuwax-harness skills into $CODEX_HOME/skills from a curated list or a GitHub ...g private repos). (file: r1/skill-installer/SKILL.md) [hash=87f93dfb405548b3]
+        - skill-installer: Install nuwax-harness skills into the harness skills directory (~/.nuwax-harness/skil...g private repos). (file: r1/skill-installer/SKILL.md) [hash=d9a116a109e46800]
         - browser-testing: Run browser tests for web applications. (file: r0/browser-testing/SKILL.md)
         - code-review: Review code changes for correctness. (file: r0/code-review/SKILL.md)
         - release-notes: Draft release notes from recent commits. (file: r0/release-notes/SKILL.md)
@@ -214,9 +213,8 @@ Settings: same as window 1
         - `r1` = `<SKILLS_ROOT>/.system`
         ### Available skills
         - imagegen: Generate or edit raster images when the task benefits from AI-created bitmap visuals such as...ctly in HTML/CSS/canvas. (file: r1/imagegen/SKILL.md) [hash=311a0e6c6c4fb754]
-        - openai-docs: Use for Codex models/pricing, scheduled tasks, skills, settings, setup, troubleshooting, ...merely mention Codex. (file: r1/openai-docs/SKILL.md) [hash=1c1693bbc4dfd0f7]
         - skill-creator: Create or update a nuwax-harness skill with appropriately scoped instructions and any n...pporting resources. (file: r1/skill-creator/SKILL.md) [hash=83f42067e2a43063]
-        - skill-installer: Install nuwax-harness skills into $CODEX_HOME/skills from a curated list or a GitHub ...g private repos). (file: r1/skill-installer/SKILL.md) [hash=87f93dfb405548b3]
+        - skill-installer: Install nuwax-harness skills into the harness skills directory (~/.nuwax-harness/skil...g private repos). (file: r1/skill-installer/SKILL.md) [hash=d9a116a109e46800]
         - code-review: Review code changes for correctness. (file: r0/code-review/SKILL.md)
         - incident-summary: Summarize incidents and follow-up actions. (file: r0/incident-summary/SKILL.md)
         - release-notes: Draft release notes grouped by feature and bug fix. (file: r0/release-notes/SKILL.md)
@@ -355,7 +353,6 @@ Settings: same as window 1
         - `r1` = `<SKILLS_ROOT>/.system`
         ### Available skills
         - imagegen: (file: r1/imagegen/SKILL.md)
-        - openai-docs: (file: r1/openai-docs/SKILL.md)
         - skill-creator: (file: r1/skill-creator/SKILL.md)
         - skill-installer: (file: r1/skill-installer/SKILL.md)
         - code-review: (file: r0/code-review/SKILL.md)
@@ -507,9 +504,8 @@ Settings: same as window 1
         - `r0` = `<SKILLS_ROOT>`
         - `r1` = `<SKILLS_ROOT>/.system`
         ### Available skills
-        - imagegen: Generate or edit raster images (file: r1/imagegen/SKILL.md)
-        - openai-docs: Use for Codex models/pricing, sc (file: r1/openai-docs/SKILL.md)
-        - skill-creator: Create or update a nuwax-harness (file: r1/skill-creator/SKILL.md)
+        - imagegen: Generate or edit raster im (file: r1/imagegen/SKILL.md)
+        - skill-creator: Create or update a nuwax-har (file: r1/skill-creator/SKILL.md)
         - skill-installer: Install nuwax-harness skills (file: r1/skill-installer/SKILL.md)
         - documentation: Write project documentation. (file: r0/documentation/SKILL.md)
         </skills_instructions>
