@@ -53,6 +53,29 @@ hooks 回指目录仅在 `.nuwax-harness` 实际存在时切换（避免 `.codex
 上游若引入自己的目录名，改为三选一优先级（`.nuwax-harness` > 上游名 > `.codex`）。
 回归测试：`loader::tests::project_config_dir_prefers_nuwax_harness_over_codex_compat`。
 
+**系统级配置目录偏好 `/etc/nuwax-harness/`（2026-11-27 起）**：用户级已是
+`~/.nuwax-harness`，系统级此前仍是上游的 `/etc/codex/`。现在两处系统入口都按同一规则
+解析：`/etc/nuwax-harness/config.toml` 与 `/etc/nuwax-harness/requirements.toml`
+存在时优先使用；不存在时**回退**到 `/etc/codex/config.toml`、`/etc/codex/requirements.toml`，
+现有镜像/K8s/compose 里写着的旧路径继续有效。两个同名文件同时存在时用 fork 的并打一条
+`warn`（不静默丢弃管理员配置）；两者都不存在时仍返回 Codex 路径——即没有配置文件时
+行为与改动前完全一致。
+
+改动点：`config/src/loader/mod.rs` 的 `NUWAX_SYSTEM_CONFIG_TOML_FILE_UNIX`、
+`NUWAX_SYSTEM_REQUIREMENTS_TOML_FILE_UNIX`、`choose_system_file()`、
+`warn_system_file_conflict()`，以及两个 unix 版 `system_*_toml_file()`。
+`exec-server` 的 `system_skills_root` 取自同一路径，因此 fork 命名空间下的
+`skills/` 也会随之生效。**不改** legacy 的 `/etc/codex/managed_config.toml`（它被当作
+`requirements.toml` 读取，属兼容遗留）。
+
+**merge 指引**：上游若改动 `system_config_toml_file()` / `system_requirements_toml_file()`
+或常量名，保留「优先 nuwax → 回退 codex → 双存在告警」的三步顺序，把上游的新逻辑
+叠加在选出的路径上；上游若引入自己的系统目录名，改为三选一（nuwax > 上游名 > codex）。
+
+回归测试：`loader::unit_tests::system_file_prefers_the_nuwax_namespace_when_both_exist`、
+`system_file_falls_back_to_the_codex_namespace`、`system_file_uses_the_nuwax_namespace_alone`、
+`system_file_keeps_the_codex_path_when_neither_exists`。
+
 **项目 hook 随项目受信（2026-11-23 起）**：项目被信任后，它声明的 hook 不再需要
 逐个审阅。上游把 hook 信任与项目信任分成两层——项目受信只让 `hooks.json` 被发现，
 每个 hook 仍要用户层写入 `trusted_hash` 才注册，而那个审批只能从 TUI 的启动审阅

@@ -80,6 +80,17 @@ pub use windows::probe_windows_system_config_namespace;
 #[cfg(unix)]
 const SYSTEM_CONFIG_TOML_FILE_UNIX: &str = "/etc/codex/config.toml";
 
+// Fork (nuwax-codex): the fork's own system namespace. When a file exists here it
+// wins over the Codex-named one, which stays supported so existing images, docs
+// and K8s manifests keep working. Both existing at once is a configuration
+// mistake worth saying out loud rather than silently preferring one.
+#[cfg(unix)]
+const NUWAX_SYSTEM_CONFIG_TOML_FILE_UNIX: &str = "/etc/nuwax-harness/config.toml";
+#[cfg(unix)]
+const SYSTEM_REQUIREMENTS_TOML_FILE_UNIX: &str = "/etc/codex/requirements.toml";
+#[cfg(unix)]
+const NUWAX_SYSTEM_REQUIREMENTS_TOML_FILE_UNIX: &str = "/etc/nuwax-harness/requirements.toml";
+
 #[cfg(windows)]
 const DEFAULT_PROGRAM_DATA_DIR_WINDOWS: &str = r"C:\ProgramData";
 
@@ -791,9 +802,40 @@ pub async fn load_requirements_toml(
     }
 }
 
+/// Picks the fork-named system file when it exists, otherwise the Codex-named one.
+///
+/// The second element says whether BOTH exist: the caller warns, because silently
+/// ignoring one of two admin-provided files is exactly the kind of divergence this
+/// fork refuses elsewhere.
+#[cfg(unix)]
+fn choose_system_file(preferred: &Path, fallback: &Path) -> (std::path::PathBuf, bool) {
+    let preferred_exists = preferred.exists();
+    let fallback_exists = fallback.exists();
+    if preferred_exists {
+        (preferred.to_path_buf(), fallback_exists)
+    } else {
+        (fallback.to_path_buf(), false)
+    }
+}
+
+#[cfg(unix)]
+fn warn_system_file_conflict(preferred: &Path, fallback: &Path) {
+    tracing::warn!(
+        preferred = %preferred.display(),
+        fallback = %fallback.display(),
+        "both system files exist; the nuwax-harness one is used and the Codex one is ignored"
+    );
+}
+
 #[cfg(unix)]
 fn system_requirements_toml_file() -> io::Result<AbsolutePathBuf> {
-    AbsolutePathBuf::from_absolute_path(Path::new("/etc/codex/requirements.toml"))
+    let preferred = Path::new(NUWAX_SYSTEM_REQUIREMENTS_TOML_FILE_UNIX);
+    let fallback = Path::new(SYSTEM_REQUIREMENTS_TOML_FILE_UNIX);
+    let (chosen, both) = choose_system_file(preferred, fallback);
+    if both {
+        warn_system_file_conflict(preferred, fallback);
+    }
+    AbsolutePathBuf::from_absolute_path(&chosen)
 }
 
 #[cfg(windows)]
@@ -848,7 +890,13 @@ fn has_local_managed_configuration_with_system_requirements_path(
 
 #[cfg(unix)]
 pub fn system_config_toml_file() -> io::Result<AbsolutePathBuf> {
-    AbsolutePathBuf::from_absolute_path(Path::new(SYSTEM_CONFIG_TOML_FILE_UNIX))
+    let preferred = Path::new(NUWAX_SYSTEM_CONFIG_TOML_FILE_UNIX);
+    let fallback = Path::new(SYSTEM_CONFIG_TOML_FILE_UNIX);
+    let (chosen, both) = choose_system_file(preferred, fallback);
+    if both {
+        warn_system_file_conflict(preferred, fallback);
+    }
+    AbsolutePathBuf::from_absolute_path(&chosen)
 }
 
 #[cfg(windows)]
@@ -2173,6 +2221,73 @@ mod unit_tests {
     #[cfg(windows)]
     use std::path::Path;
     use tempfile::tempdir;
+
+    #[cfg(unix)]
+    #[test]
+    fn system_file_prefers_the_nuwax_namespace_when_both_exist() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let preferred = tmp.path().join("nuwax-harness").join("config.toml");
+        let fallback = tmp.path().join("codex").join("config.toml");
+        std::fs::create_dir_all(preferred.parent().expect("parent"))?;
+        std::fs::create_dir_all(fallback.parent().expect("parent"))?;
+        std::fs::write(&preferred, "log_dir = \"/tmp/a\"\n")?;
+        std::fs::write(&fallback, "log_dir = \"/tmp/b\"\n")?;
+
+        assert_eq!(
+            choose_system_file(&preferred, &fallback),
+            (preferred.clone(), true),
+            "both present: use the fork name and report the conflict"
+        );
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn system_file_falls_back_to_the_codex_namespace() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let preferred = tmp.path().join("nuwax-harness").join("config.toml");
+        let fallback = tmp.path().join("codex").join("config.toml");
+        std::fs::create_dir_all(fallback.parent().expect("parent"))?;
+        std::fs::write(&fallback, "log_dir = \"/tmp/b\"\n")?;
+
+        assert_eq!(
+            choose_system_file(&preferred, &fallback),
+            (fallback.clone(), false),
+            "no fork file: the existing Codex file keeps working, no conflict"
+        );
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn system_file_uses_the_nuwax_namespace_alone() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let preferred = tmp.path().join("nuwax-harness").join("config.toml");
+        let fallback = tmp.path().join("codex").join("config.toml");
+        std::fs::create_dir_all(preferred.parent().expect("parent"))?;
+        std::fs::write(&preferred, "log_dir = \"/tmp/a\"\n")?;
+
+        assert_eq!(
+            choose_system_file(&preferred, &fallback),
+            (preferred.clone(), false)
+        );
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn system_file_keeps_the_codex_path_when_neither_exists() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let preferred = tmp.path().join("nuwax-harness").join("config.toml");
+        let fallback = tmp.path().join("codex").join("config.toml");
+
+        assert_eq!(
+            choose_system_file(&preferred, &fallback),
+            (fallback.clone(), false),
+            "neither present: keep the historical default so nothing changes silently"
+        );
+        Ok(())
+    }
 
     #[test]
     fn ensure_resolve_relative_paths_in_config_toml_preserves_all_fields() -> anyhow::Result<()> {
