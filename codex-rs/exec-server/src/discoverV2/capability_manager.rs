@@ -9,6 +9,8 @@ use crate::discover_v2::capability_discoveries::load_capability_discoveries;
 use crate::discover_v2::capability_locations::CapabilityLocationRequest;
 use crate::discover_v2::capability_locations::CapabilityLocations;
 use crate::discover_v2::capability_locations::prewarm_locations;
+// system_config_dirs 只存在于 unix 构建；Windows 走单命名空间的 system_skills_root。
+#[cfg(unix)]
 use codex_config::loader::system_config_dirs;
 use codex_config::loader::system_config_toml_file;
 use codex_file_watcher::WatchRegistration;
