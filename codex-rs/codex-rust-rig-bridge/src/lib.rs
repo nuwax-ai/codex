@@ -29,13 +29,13 @@ mod response_tools;
 mod responses;
 mod sse;
 mod stream;
-mod wire_capture;
 mod stream_pump;
 mod transport;
 mod transport_identity;
 mod usage;
 mod wire_auth;
 mod wire_budget;
+mod wire_capture;
 mod wire_images;
 
 pub use bridge_impl::RigModelBridge;

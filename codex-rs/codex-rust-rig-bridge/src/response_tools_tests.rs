@@ -184,7 +184,10 @@ fn invalid_call(id: &str, tool: &str, raw: &str) -> ToolCall {
     call
 }
 
-fn done_item(tools: &mut crate::response_tools::PendingTools, id: &str) -> codex_protocol::models::ResponseItem {
+fn done_item(
+    tools: &mut crate::response_tools::PendingTools,
+    id: &str,
+) -> codex_protocol::models::ResponseItem {
     let mut events = tools.finish().expect("the turn continues");
     let events = events.remove(id).expect("the call is published");
     events
@@ -250,4 +253,3 @@ fn bare_text_for_a_function_tool_is_passed_through_verbatim() {
         other => panic!("expected a function call, got {other:?}"),
     }
 }
-
