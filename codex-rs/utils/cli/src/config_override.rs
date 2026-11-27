@@ -116,6 +116,10 @@ impl CliConfigOverrides {
             &mut overrides,
             resolve_seed_alias(NUWAX_BYPASS_HOOK_TRUST_ENV, BYPASS_HOOK_TRUST_ENV)?,
         )?;
+        seed_env_update_plan(
+            &mut overrides,
+            (std::env::var_os(NUWAX_UPDATE_PLAN_ENV), NUWAX_UPDATE_PLAN_ENV),
+        )?;
         Ok(overrides)
     }
 }
@@ -252,6 +256,44 @@ fn seed_env_tool_search(
         }
     };
     overrides.push((TOOL_SEARCH_CONFIG_KEY.into(), Value::Boolean(parsed)));
+    Ok(())
+}
+
+/// Fork (nuwax-codex, 2026-11-27): `NUWAX_UPDATE_PLAN` seeds the
+/// `update_plan` checklist tool. Upstream turned the tool opt-in in 0.152.0
+/// (openai/codex#41744), so its default stays off; this variable lets a
+/// deployment turn it on for every session without editing `config.toml`, and
+/// `false` turns it off even when the config file enables it. There is no
+/// `CODEX_*` spelling to stay compatible with — upstream never had the
+/// variable — so `NUWAX_` is the only name.
+const NUWAX_UPDATE_PLAN_ENV: &str = "NUWAX_UPDATE_PLAN";
+const UPDATE_PLAN_CONFIG_KEY: &str = "tools.update_plan.enabled";
+
+fn seed_env_update_plan(
+    overrides: &mut Vec<(String, Value)>,
+    seed: (Option<OsString>, &'static str),
+) -> Result<(), String> {
+    let (value, env_name) = seed;
+    let Some(raw) = env_override_text(
+        overrides,
+        UPDATE_PLAN_CONFIG_KEY,
+        env_name,
+        value.as_deref(),
+    )?
+    else {
+        return Ok(());
+    };
+    let canonical = raw.to_ascii_lowercase();
+    let parsed = match canonical.as_str() {
+        "true" => true,
+        "false" => false,
+        _ => {
+            return Err(format!(
+                "Invalid {env_name} value {raw:?}; expected true or false"
+            ));
+        }
+    };
+    overrides.push((UPDATE_PLAN_CONFIG_KEY.into(), Value::Boolean(parsed)));
     Ok(())
 }
 
@@ -475,6 +517,63 @@ fn localize_config_arg(mut command: clap::Command) -> clap::Command {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nuwax_update_plan_seeds_the_tool_flag() {
+        for (raw, expected) in [("true", true), ("TRUE", true), ("false", false), (" false ", false)] {
+            let mut overrides = Vec::new();
+            seed_env_update_plan(
+                &mut overrides,
+                (Some(OsString::from(raw)), NUWAX_UPDATE_PLAN_ENV),
+            )
+            .expect("valid value");
+            assert_eq!(
+                overrides,
+                vec![(UPDATE_PLAN_CONFIG_KEY.to_string(), Value::Boolean(expected))],
+                "{raw} must seed tools.update_plan.enabled={expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn nuwax_update_plan_unset_leaves_the_config_alone() {
+        let mut overrides = Vec::new();
+        seed_env_update_plan(&mut overrides, (None, NUWAX_UPDATE_PLAN_ENV)).expect("no value");
+        assert!(overrides.is_empty());
+    }
+
+    /// A misspelled value must fail naming the variable: silently ignoring it
+    /// would leave the tool off with no clue why.
+    #[test]
+    fn nuwax_update_plan_rejects_other_values_by_name() {
+        let mut overrides = Vec::new();
+        let error = seed_env_update_plan(
+            &mut overrides,
+            (Some(OsString::from("yes")), NUWAX_UPDATE_PLAN_ENV),
+        )
+        .expect_err("yes is not true/false");
+        assert!(error.contains("NUWAX_UPDATE_PLAN"), "{error}");
+        assert!(error.contains("expected true or false"), "{error}");
+        assert!(overrides.is_empty());
+    }
+
+    /// An explicit `-c tools.update_plan.enabled=...` wins over the environment.
+    #[test]
+    fn explicit_override_beats_nuwax_update_plan() {
+        let mut overrides = vec![(
+            UPDATE_PLAN_CONFIG_KEY.to_string(),
+            Value::Boolean(false),
+        )];
+        seed_env_update_plan(
+            &mut overrides,
+            (Some(OsString::from("true")), NUWAX_UPDATE_PLAN_ENV),
+        )
+        .expect("valid value");
+        assert_eq!(
+            overrides,
+            vec![(UPDATE_PLAN_CONFIG_KEY.to_string(), Value::Boolean(false))]
+        );
+    }
 
     #[test]
     fn parses_basic_scalar() {

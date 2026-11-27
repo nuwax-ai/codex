@@ -175,6 +175,7 @@ nuwax-harness doctor --json
 | `NUWAX_MODEL` | 平台实际模型 ID；完整启动组需要它，或用显式 `--model` / `-m` 提供模型 |
 | `NUWAX_BRIDGE` | 可选：`rig`、`native`、`genai`；不设时保持本 fork 的 rig 默认值 |
 | `NUWAX_MAX_OUTPUT_TOKENS` | 可选正整数，每次生成的输出上限（同义 `CODEX_MAX_OUTPUT_TOKENS`）。**不只属于本组**：对 config.toml 里选中的 provider 也生效（填到它没声明的 `max_output_tokens`）；不是上下文窗口大小 |
+| `NUWAX_UPDATE_PLAN` | `true` / `false`，控制模型的 `update_plan`（待办清单）工具。**默认关闭**，跟随上游 0.152.0 的 opt-in 决定（openai/codex#41744）。等价于 `[tools.update_plan] enabled = <值>`，但显式 `-c tools.update_plan.enabled=...` 优先于本变量。清单只影响"给人看的进度"，压缩后可能丢失，不承担长任务的防漂移职责（那是 goal 的事）。值不是 true/false 时启动即报错并点名变量 |
 | `NUWAX_REQUEST_MAX_RETRIES` | 可选非负整数，HTTP 请求重试次数，`0` 表示本层仅发一次 |
 | `NUWAX_STREAM_MAX_RETRIES` | 可选非负整数，流恢复/采样重试预算，`0` 禁用本层重试 |
 | `NUWAX_STREAM_IDLE_TIMEOUT_MS` | 可选正整数，流空闲超时，单位毫秒；不是整轮总时限。rig 0.47 起（引擎 0.18.59 之后）Chat/Anthropic 线上大于 300000（5 分钟）的值完整生效——更早的引擎在完全没有字节的静默段里最多只等 5 分钟 |
