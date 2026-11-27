@@ -64,9 +64,11 @@ hooks 回指目录仅在 `.nuwax-harness` 实际存在时切换（避免 `.codex
 改动点：`config/src/loader/mod.rs` 的 `NUWAX_SYSTEM_CONFIG_TOML_FILE_UNIX`、
 `NUWAX_SYSTEM_REQUIREMENTS_TOML_FILE_UNIX`、`choose_system_file()`、
 `warn_system_file_conflict()`，以及两个 unix 版 `system_*_toml_file()`。
-`exec-server` 的 `system_skills_root` 取自同一路径，因此 fork 命名空间下的
-`skills/` 也会随之生效。**不改** legacy 的 `/etc/codex/managed_config.toml`（它被当作
-`requirements.toml` 读取，属兼容遗留）。
+`exec-server` 的 `system_skills_root` **不跟随**这个选择：它按
+`/etc/nuwax-harness/skills` → `/etc/codex/skills` 依次取第一个存在的目录，因此在已有
+`/etc/codex/skills` 的机器上新增 fork 配置文件不会把系统技能“弄丢”
+（`system_config_dirs()` 导出两个目录供其判断）。**不改** legacy 的
+`/etc/codex/managed_config.toml`（它被当作 `requirements.toml` 读取，属兼容遗留）。
 
 **merge 指引**：上游若改动 `system_config_toml_file()` / `system_requirements_toml_file()`
 或常量名，保留「优先 nuwax → 回退 codex → 双存在告警」的三步顺序，把上游的新逻辑

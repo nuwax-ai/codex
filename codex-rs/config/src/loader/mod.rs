@@ -90,6 +90,10 @@ const NUWAX_SYSTEM_CONFIG_TOML_FILE_UNIX: &str = "/etc/nuwax-harness/config.toml
 const SYSTEM_REQUIREMENTS_TOML_FILE_UNIX: &str = "/etc/codex/requirements.toml";
 #[cfg(unix)]
 const NUWAX_SYSTEM_REQUIREMENTS_TOML_FILE_UNIX: &str = "/etc/nuwax-harness/requirements.toml";
+#[cfg(unix)]
+const SYSTEM_CONFIG_DIR_UNIX: &str = "/etc/codex";
+#[cfg(unix)]
+const NUWAX_SYSTEM_CONFIG_DIR_UNIX: &str = "/etc/nuwax-harness";
 
 #[cfg(windows)]
 const DEFAULT_PROGRAM_DATA_DIR_WINDOWS: &str = r"C:\ProgramData";
@@ -807,6 +811,20 @@ pub async fn load_requirements_toml(
 /// The second element says whether BOTH exist: the caller warns, because silently
 /// ignoring one of two admin-provided files is exactly the kind of divergence this
 /// fork refuses elsewhere.
+/// The system configuration directories this build honors, most specific first.
+///
+/// For consumers that resolve sibling data rather than the config file itself: which
+/// config file exists must not decide where system skills are looked up, because an
+/// operator can add a fork-named config file to a host whose skills still live under
+/// the Codex name.
+#[cfg(unix)]
+pub fn system_config_dirs() -> io::Result<[AbsolutePathBuf; 2]> {
+    Ok([
+        AbsolutePathBuf::from_absolute_path(NUWAX_SYSTEM_CONFIG_DIR_UNIX)?,
+        AbsolutePathBuf::from_absolute_path(SYSTEM_CONFIG_DIR_UNIX)?,
+    ])
+}
+
 #[cfg(unix)]
 fn choose_system_file(preferred: &Path, fallback: &Path) -> (std::path::PathBuf, bool) {
     let preferred_exists = preferred.exists();

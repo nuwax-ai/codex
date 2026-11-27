@@ -9,6 +9,7 @@ use crate::discover_v2::capability_discoveries::load_capability_discoveries;
 use crate::discover_v2::capability_locations::CapabilityLocationRequest;
 use crate::discover_v2::capability_locations::CapabilityLocations;
 use crate::discover_v2::capability_locations::prewarm_locations;
+use codex_config::loader::system_config_dirs;
 use codex_config::loader::system_config_toml_file;
 use codex_file_watcher::WatchRegistration;
 use codex_utils_path_uri::PathUri;
@@ -67,9 +68,7 @@ impl CapabilityManager {
                     codex_home: PathUri::from_abs_path(&codex_utils_home_dir::find_codex_home()?),
                     user_home: dirs::home_dir()
                         .and_then(|home| PathUri::from_host_native_path(home).ok()),
-                    system_skills_root: system_config_toml_file()?
-                        .parent()
-                        .map(|root| PathUri::from_abs_path(&root.join("skills"))),
+                    system_skills_root: system_skills_root(),
                 };
                 let locations = prewarm_locations(&self.file_system, &request).await?;
                 Ok::<_, io::Error>((request, locations))
@@ -172,6 +171,32 @@ impl CapabilityManager {
     async fn location_snapshot(&self) -> Option<Arc<LocationState>> {
         self.current_state.lock().await.clone()
     }
+}
+
+/// Where admin-provided system skills live.
+///
+/// Resolved independently of which system config file exists: a host may add
+/// `/etc/nuwax-harness/config.toml` while its skills still sit under
+/// `/etc/codex/skills`, and the fork's config preference must not hide them.
+/// Only Unix has the fork's second namespace, so other targets keep the single
+/// directory their config file implies.
+#[cfg(unix)]
+fn system_skills_root() -> Option<PathUri> {
+    system_config_dirs()
+        .ok()?
+        .into_iter()
+        .map(|dir| dir.join("skills"))
+        .find(|skills| skills.as_path().is_dir())
+        .or_else(|| Some(system_config_toml_file().ok()?.parent()?.join("skills")))
+        .map(|skills| PathUri::from_abs_path(&skills))
+}
+
+#[cfg(not(unix))]
+fn system_skills_root() -> Option<PathUri> {
+    system_config_toml_file()
+        .ok()?
+        .parent()
+        .map(|root| PathUri::from_abs_path(&root.join("skills")))
 }
 
 #[cfg(test)]
