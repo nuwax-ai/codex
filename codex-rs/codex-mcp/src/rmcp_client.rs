@@ -1111,7 +1111,7 @@ fn resolve_bearer_token(
 /// configured server at startup for a constraint that no longer applies, and
 /// rewriting the name here would change the identity that disabled rules, OAuth
 /// credentials and `mcp list` are keyed by.
-fn validate_mcp_server_name(server_name: &str) -> Result<()> {
+pub fn validate_mcp_server_name(server_name: &str) -> Result<()> {
     if server_name.trim().is_empty() {
         return Err(anyhow!("Invalid MCP server name: must not be empty"));
     }

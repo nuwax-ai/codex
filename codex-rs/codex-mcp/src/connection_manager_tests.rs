@@ -7154,3 +7154,23 @@ async fn view_only_changes_reuse_connection_and_preserve_the_old_step() {
     );
     assert_eq!(new_call.tool_approval_mode(), AppToolApproval::Approve);
 }
+
+/// A server name is a host-side identifier: the only rule is that it must not be
+/// blank. Model-facing tool names are sanitized elsewhere.
+#[test]
+fn server_names_accept_non_ascii_and_reject_only_blank() {
+    assert!(crate::validate_mcp_server_name("图像服务").is_ok());
+    assert!(crate::validate_mcp_server_name("my server").is_ok());
+    assert!(crate::validate_mcp_server_name("github").is_ok());
+    assert!(crate::validate_mcp_server_name("").is_err());
+    assert!(crate::validate_mcp_server_name("   ").is_err());
+}
+
+/// The `mcp login` hint is copy-pasteable: names the shell would split are quoted,
+/// plain identifiers stay bare.
+#[test]
+fn command_hints_quote_only_what_needs_it() {
+    assert_eq!(crate::quote_command_argument("github"), "github");
+    assert_eq!(crate::quote_command_argument("图像服务"), "\"图像服务\"");
+    assert_eq!(crate::quote_command_argument("my server"), "\"my server\"");
+}

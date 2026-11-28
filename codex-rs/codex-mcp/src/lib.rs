@@ -30,6 +30,7 @@ pub use resource_client::McpResourceReadResult;
 pub use resource_client::McpResourceServerCacheKey;
 pub use rmcp::model::ReadResourceRequestParams;
 pub use rmcp_client::MCP_NETWORK_POLICY_META_CAPABILITY;
+pub use rmcp_client::validate_mcp_server_name;
 pub use runtime::McpRuntime;
 pub use runtime::McpRuntimeContext;
 pub use runtime::McpRuntimeInput;
@@ -149,3 +150,21 @@ mod tool_catalog_cache;
 mod tool_request_meta;
 pub(crate) mod tools;
 mod trusted_access;
+
+/// Quotes a value for a command line shown to the user.
+///
+/// A server name may now contain spaces or other characters the shell would split,
+/// so the hint must quote it. Plain identifiers stay bare to keep the hint readable.
+pub fn quote_command_argument(value: &str) -> String {
+    let bare = !value.is_empty()
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | ':' | '@' | '/' | '.'));
+    if bare {
+        value.to_string()
+    } else {
+        // `Debug` for `str` escapes quotes/backslashes/control characters and leaves
+        // other Unicode alone, which is what a shell double-quoted word needs here.
+        format!("{value:?}")
+    }
+}

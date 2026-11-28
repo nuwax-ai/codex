@@ -494,7 +494,8 @@ async fn run_add(config: &Config, add_args: AddArgs) -> Result<()> {
         }
         McpOAuthLoginSupport::Unsupported => {}
         McpOAuthLoginSupport::Unknown(_) => println!(
-            "MCP server may or may not require login. Run `nuwax-harness mcp login {name}` to login."
+            "MCP server may or may not require login. Run `nuwax-harness mcp login {}` to login.",
+            codex_mcp::quote_command_argument(&name)
         ),
     }
 
@@ -1146,17 +1147,12 @@ fn parse_env_pair(raw: &str) -> Result<(String, String), String> {
     Ok((key.to_string(), value))
 }
 
+/// Same rule as the runtime: a server name is a host-side identifier and only has
+/// to be non-empty. Model-facing tool names are sanitized where they are built, and
+/// rewriting the name here would make `mcp add`/`mcp remove` unable to address a
+/// server that the catalog accepts (e.g. a Chinese name).
 fn validate_server_name(name: &str) -> Result<()> {
-    let is_valid = !name.is_empty()
-        && name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | ':' | '@' | '/' | '.'));
-
-    if is_valid {
-        Ok(())
-    } else {
-        bail!("invalid server name '{name}' (use letters, numbers, '-', '_', ':', '@', '/', '.')");
-    }
+    codex_mcp::validate_mcp_server_name(name).map_err(|error| anyhow::anyhow!("{error}"))
 }
 
 fn format_mcp_status(config: &McpServerConfig) -> String {

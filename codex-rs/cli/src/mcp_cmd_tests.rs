@@ -344,3 +344,14 @@ async fn application_network_loader_rejects_malformed_managed_policy() -> anyhow
     );
     Ok(())
 }
+
+/// `mcp add`/`mcp remove` must accept the same names the catalog does, or a server
+/// that registers and lists successfully cannot be addressed by its own name.
+#[test]
+fn server_name_validation_matches_the_runtime() {
+    use super::validate_server_name;
+    assert!(validate_server_name("github").is_ok());
+    assert!(validate_server_name("图像服务").is_ok());
+    assert!(validate_server_name("my server").is_ok());
+    assert!(validate_server_name("").is_err());
+}
