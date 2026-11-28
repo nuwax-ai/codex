@@ -26,6 +26,7 @@ use super::McpServerRegistration;
 use super::McpServerSource;
 use super::ResolvedMcpCatalog;
 use super::ResolvedMcpServer;
+use super::normalize_server_name;
 
 fn server(url: &str) -> McpServerConfig {
     McpServerConfig {
@@ -860,9 +861,9 @@ fn non_ascii_server_names_are_sanitized_instead_of_rejected() {
     ));
     let catalog = builder.build();
 
-    let name = "____";
+    let name = normalize_server_name("图像服务".to_string());
     assert!(
-        catalog.server(name).is_some(),
+        catalog.server(&name).is_some(),
         "the sanitized name must be the one the catalog knows: {:?}",
         catalog.configured_servers().keys().collect::<Vec<_>>()
     );
@@ -885,7 +886,53 @@ fn disabling_a_non_ascii_server_name_disables_the_sanitized_registration() {
     // The veto disables rather than removes, so the row must survive with
     // `enabled: false` under the sanitized name — a raw name would miss it.
     let sanitized = catalog
-        .server("____")
+        .server(&normalize_server_name("图像服务".to_string()))
         .expect("the veto must reach the sanitized registration");
     assert_eq!(sanitized.config.enabled, false);
+}
+
+/// `图片` and `搜索` both flatten to `__`. The name is the registration key, the
+/// disabled-rule key and the merge key, so without a discriminator the second
+/// server would silently replace the first.
+#[test]
+fn distinct_non_ascii_names_do_not_collapse_into_one_server() {
+    let mut builder = ResolvedMcpCatalog::builder();
+    for name in ["图片", "搜索", "图像服务"] {
+        builder.register(McpServerRegistration::from_config(
+            name.to_string(),
+            server("https://example.test/mcp"),
+        ));
+    }
+    let catalog = builder.build();
+
+    let mut names: Vec<String> = catalog.configured_servers().keys().cloned().collect();
+    names.sort();
+    assert_eq!(
+        names.len(),
+        3,
+        "every configured server must keep its own registration: {names:?}"
+    );
+    for name in ["图片", "搜索", "图像服务"] {
+        let sanitized = normalize_server_name(name.to_string());
+        assert!(
+            catalog.server(&sanitized).is_some(),
+            "{name} must be reachable as {sanitized}"
+        );
+    }
+}
+
+/// The suffix is derived from the configured name alone, so adding or removing
+/// another server never renames this one (tool names and approvals stay stable).
+#[test]
+fn sanitized_names_are_stable_and_hash_free_for_ascii() {
+    assert_eq!(
+        normalize_server_name("图片".to_string()),
+        normalize_server_name("图片".to_string())
+    );
+    assert_eq!(normalize_server_name("github".to_string()), "github");
+    assert_eq!(normalize_server_name("apps".to_string()), "apps");
+    assert_ne!(
+        normalize_server_name("图片".to_string()),
+        normalize_server_name("搜索".to_string())
+    );
 }
