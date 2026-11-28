@@ -1161,3 +1161,23 @@ fn structured_error_type_is_the_last_named_fallback() {
         "exceeded retry limit, last status: 429 Too Many Requests: type: rate_limit_error"
     );
 }
+
+/// Error bodies are capped before they reach us, so a structured rejection can
+/// arrive truncated and fail to parse. It must not be mistaken for prose: the
+/// clipped raw text would echo the request the gateway put in the body.
+#[test]
+fn truncated_structured_rejection_is_not_echoed() {
+    let body = r#"{"request":{"messages":[{"role":"user","content":"SECRET-PROMPT"}]},"trace_id":"abc-123"#;
+    let err = map_api_error(ApiError::Transport(TransportError::Http {
+        status: http::StatusCode::TOO_MANY_REQUESTS,
+        url: None,
+        headers: None,
+        body: Some(body.to_string()),
+        retry_after: None,
+    }));
+    assert_eq!(
+        err.to_string(),
+        "exceeded retry limit, last status: 429 Too Many Requests",
+        "a cut-off JSON body must not be echoed either"
+    );
+}

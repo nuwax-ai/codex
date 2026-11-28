@@ -137,6 +137,13 @@ fn provider_error_message(body_text: &str) -> Option<String> {
         // JSON that may contain the request we just sent.
         return None;
     }
+    // Error bodies are capped (rig keeps the first 64 KiB plus a truncation
+    // marker), so a structured response can arrive cut in half and fail to parse
+    // above. It is still JSON-shaped, not prose: falling through to the clipped
+    // raw text would echo whatever the gateway put in it.
+    if trimmed.starts_with('{') || trimmed.starts_with('[') {
+        return None;
+    }
     clip_provider_message(trimmed)
 }
 
