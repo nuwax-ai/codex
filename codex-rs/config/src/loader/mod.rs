@@ -820,16 +820,20 @@ pub fn system_config_dirs() -> io::Result<[AbsolutePathBuf; 2]> {
     ])
 }
 
-/// Whether `path` names something on disk.
+/// Whether `path` names something readable on disk.
 ///
 /// `Path::exists()` answers `false` for every error, so an unreadable directory would
 /// look exactly like an absent file and the Codex fallback would take over without a
 /// word. Only "nothing there" means absent; anything else is reported and treated as
 /// absent *with a warning* naming the path, because a broken optional file must not
 /// keep the CLI from starting.
+///
+/// Links are followed on purpose (`metadata`, not `symlink_metadata`): a dangling link
+/// reads as `NotFound`, which the loader treats as "no file", so counting it as present
+/// would let it shadow the fallback and silently drop that file's settings.
 #[cfg(unix)]
 fn path_is_present(path: &Path) -> bool {
-    match std::fs::symlink_metadata(path) {
+    match std::fs::metadata(path) {
         Ok(_) => true,
         Err(error) if error.kind() == io::ErrorKind::NotFound => false,
         Err(error) => {
@@ -2278,6 +2282,28 @@ mod unit_tests {
             choose_system_file(&preferred, &fallback),
             (preferred.clone(), true),
             "both present: use the fork name and report the conflict"
+        );
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_dangling_fork_symlink_falls_back_to_codex() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let preferred = tmp.path().join("nuwax-harness").join("requirements.toml");
+        let fallback = tmp.path().join("codex").join("requirements.toml");
+        std::fs::create_dir_all(fallback.parent().expect("parent"))?;
+        std::fs::write(&fallback, "log_dir = \"/tmp/b\"\n")?;
+        std::fs::create_dir_all(preferred.parent().expect("parent"))?;
+        // A dangling link is not a usable file: reading it returns NotFound, which the
+        // loader treats as "no requirements". Selecting it would silently drop the
+        // administrator's fallback policy.
+        std::os::unix::fs::symlink(preferred.with_extension("absent"), &preferred)?;
+
+        assert_eq!(
+            choose_system_file(&preferred, &fallback),
+            (fallback.clone(), false),
+            "a link to nothing must not shadow the real file"
         );
         Ok(())
     }
