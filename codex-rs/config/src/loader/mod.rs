@@ -832,18 +832,18 @@ pub fn system_config_dirs() -> io::Result<[AbsolutePathBuf; 2]> {
 /// reads as `NotFound`, which the loader treats as "no file", so counting it as present
 /// would let it shadow the fallback and silently drop that file's settings.
 #[cfg(unix)]
-fn path_is_present(path: &Path) -> bool {
+fn path_is_present(path: &Path) -> io::Result<bool> {
     match std::fs::metadata(path) {
-        Ok(_) => true,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => false,
-        Err(error) => {
-            tracing::warn!(
-                path = %path.display(),
-                %error,
-                "cannot stat a system configuration file; treating it as absent"
-            );
-            false
-        }
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+        // Only "nothing there" may fall back. A loop, a permission error or a path
+        // through a non-directory means we cannot know whether the file exists, and
+        // falling back would silently drop the administrator's file — for
+        // `requirements.toml` that is a policy that stops being enforced.
+        Err(error) => Err(io::Error::new(
+            error.kind(),
+            format!("failed to stat {}: {error}", path.display()),
+        )),
     }
 }
 
@@ -853,14 +853,14 @@ fn path_is_present(path: &Path) -> bool {
 /// ignoring one of two admin-provided files is exactly the kind of divergence this
 /// fork refuses elsewhere.
 #[cfg(unix)]
-fn choose_system_file(preferred: &Path, fallback: &Path) -> (std::path::PathBuf, bool) {
-    let preferred_exists = path_is_present(preferred);
-    let fallback_exists = path_is_present(fallback);
-    if preferred_exists {
+fn choose_system_file(preferred: &Path, fallback: &Path) -> io::Result<(std::path::PathBuf, bool)> {
+    let preferred_exists = path_is_present(preferred)?;
+    let fallback_exists = path_is_present(fallback)?;
+    Ok(if preferred_exists {
         (preferred.to_path_buf(), fallback_exists)
     } else {
         (fallback.to_path_buf(), false)
-    }
+    })
 }
 
 #[cfg(unix)]
@@ -876,7 +876,7 @@ fn warn_system_file_conflict(preferred: &Path, fallback: &Path) {
 fn system_requirements_toml_file() -> io::Result<AbsolutePathBuf> {
     let preferred = Path::new(NUWAX_SYSTEM_REQUIREMENTS_TOML_FILE_UNIX);
     let fallback = Path::new(SYSTEM_REQUIREMENTS_TOML_FILE_UNIX);
-    let (chosen, both) = choose_system_file(preferred, fallback);
+    let (chosen, both) = choose_system_file(preferred, fallback)?;
     if both {
         warn_system_file_conflict(preferred, fallback);
     }
@@ -937,7 +937,7 @@ fn has_local_managed_configuration_with_system_requirements_path(
 pub fn system_config_toml_file() -> io::Result<AbsolutePathBuf> {
     let preferred = Path::new(NUWAX_SYSTEM_CONFIG_TOML_FILE_UNIX);
     let fallback = Path::new(SYSTEM_CONFIG_TOML_FILE_UNIX);
-    let (chosen, both) = choose_system_file(preferred, fallback);
+    let (chosen, both) = choose_system_file(preferred, fallback)?;
     if both {
         warn_system_file_conflict(preferred, fallback);
     }
@@ -2279,9 +2279,30 @@ mod unit_tests {
         std::fs::write(&fallback, "log_dir = \"/tmp/b\"\n")?;
 
         assert_eq!(
-            choose_system_file(&preferred, &fallback),
+            choose_system_file(&preferred, &fallback).expect("stat"),
             (preferred.clone(), true),
             "both present: use the fork name and report the conflict"
+        );
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_loop_is_an_error_not_an_absent_file() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let preferred = tmp.path().join("nuwax-harness").join("requirements.toml");
+        let fallback = tmp.path().join("codex").join("requirements.toml");
+        std::fs::create_dir_all(preferred.parent().expect("parent"))?;
+        std::fs::create_dir_all(fallback.parent().expect("parent"))?;
+        std::fs::write(&fallback, "log_dir = \"/tmp/b\"\n")?;
+        // A loop makes metadata() answer ELOOP: we cannot tell whether a policy
+        // file exists, so refusing beats silently enforcing nothing.
+        std::os::unix::fs::symlink(&preferred, &preferred)?;
+
+        let error = choose_system_file(&preferred, &fallback).expect_err("must not fall back");
+        assert!(
+            error.to_string().contains("failed to stat"),
+            "the error must name the path: {error}"
         );
         Ok(())
     }
@@ -2301,7 +2322,7 @@ mod unit_tests {
         std::os::unix::fs::symlink(preferred.with_extension("absent"), &preferred)?;
 
         assert_eq!(
-            choose_system_file(&preferred, &fallback),
+            choose_system_file(&preferred, &fallback).expect("stat"),
             (fallback.clone(), false),
             "a link to nothing must not shadow the real file"
         );
@@ -2318,7 +2339,7 @@ mod unit_tests {
         std::fs::write(&fallback, "log_dir = \"/tmp/b\"\n")?;
 
         assert_eq!(
-            choose_system_file(&preferred, &fallback),
+            choose_system_file(&preferred, &fallback).expect("stat"),
             (fallback.clone(), false),
             "no fork file: the existing Codex file keeps working, no conflict"
         );
@@ -2335,7 +2356,7 @@ mod unit_tests {
         std::fs::write(&preferred, "log_dir = \"/tmp/a\"\n")?;
 
         assert_eq!(
-            choose_system_file(&preferred, &fallback),
+            choose_system_file(&preferred, &fallback).expect("stat"),
             (preferred.clone(), false)
         );
         Ok(())
@@ -2349,7 +2370,7 @@ mod unit_tests {
         let fallback = tmp.path().join("codex").join("config.toml");
 
         assert_eq!(
-            choose_system_file(&preferred, &fallback),
+            choose_system_file(&preferred, &fallback).expect("stat"),
             (fallback.clone(), false),
             "neither present: keep the historical default so nothing changes silently"
         );
