@@ -1103,13 +1103,17 @@ fn resolve_bearer_token(
     }
 }
 
+/// Server names are host-side identifiers and may be any non-empty text.
+///
+/// Model-facing tool names are derived from them by the MCP tool layer, which
+/// sanitizes characters the Responses API cannot carry and disambiguates collisions
+/// with a hash (`codex_mcp::tools`). Rejecting non-ASCII names here would fail a
+/// configured server at startup for a constraint that no longer applies, and
+/// rewriting the name here would change the identity that disabled rules, OAuth
+/// credentials and `mcp list` are keyed by.
 fn validate_mcp_server_name(server_name: &str) -> Result<()> {
-    let re = regex_lite::Regex::new(r"^[a-zA-Z0-9_:@/.-]+$")?;
-    if !re.is_match(server_name) {
-        return Err(anyhow!(
-            "Invalid MCP server name '{server_name}': must match pattern {pattern}",
-            pattern = re.as_str()
-        ));
+    if server_name.trim().is_empty() {
+        return Err(anyhow!("Invalid MCP server name: must not be empty"));
     }
     Ok(())
 }

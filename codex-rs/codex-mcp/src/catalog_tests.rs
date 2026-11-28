@@ -26,7 +26,6 @@ use super::McpServerRegistration;
 use super::McpServerSource;
 use super::ResolvedMcpCatalog;
 use super::ResolvedMcpServer;
-use super::normalize_server_name;
 
 fn server(url: &str) -> McpServerConfig {
     McpServerConfig {
@@ -848,12 +847,13 @@ fn retired_plugin_ema_does_not_veto_a_later_runtime_registration() {
     assert_eq!(builder.build().server("docs").unwrap().config(), &expected);
 }
 
-/// A configured server name with characters a tool name cannot carry used to
-/// fail the server at startup ("Invalid MCP server name"), which the user only
-/// saw later as a failed `…__startup` tool call. It is now renamed with
-/// underscores so the server works, and the rename is logged.
+/// A configured server name with characters a tool name cannot carry used to fail
+/// the server at startup ("Invalid MCP server name"). It must now keep its
+/// configured spelling as identity — that is what disabled rules, OAuth
+/// credentials and `mcp list` are keyed by — while the model-facing tool names are
+/// sanitized where they are built (`codex_mcp::tools`).
 #[test]
-fn non_ascii_server_names_are_sanitized_instead_of_rejected() {
+fn non_ascii_server_names_keep_their_configured_identity() {
     let mut builder = ResolvedMcpCatalog::builder();
     builder.register(McpServerRegistration::from_config(
         "图像服务".to_string(),
@@ -861,20 +861,18 @@ fn non_ascii_server_names_are_sanitized_instead_of_rejected() {
     ));
     let catalog = builder.build();
 
-    let name = normalize_server_name("图像服务".to_string());
     assert!(
-        catalog.server(&name).is_some(),
-        "the sanitized name must be the one the catalog knows: {:?}",
+        catalog.server("图像服务").is_some(),
+        "the configured name is the identity: {:?}",
         catalog.configured_servers().keys().collect::<Vec<_>>()
     );
-    assert!(catalog.server("图像服务").is_none());
+    assert!(catalog.server("____").is_none());
 }
 
-/// The disabled veto is keyed by name, so it has to use the same sanitized
-/// spelling — otherwise a name only the raw config knows could silence a server
-/// that is registered under its sanitized name.
+/// The disabled veto is keyed by the same configured name the registration uses;
+/// with identity and model-facing names separated, they can no longer drift.
 #[test]
-fn disabling_a_non_ascii_server_name_disables_the_sanitized_registration() {
+fn disabling_a_non_ascii_server_name_disables_the_configured_registration() {
     let mut builder = ResolvedMcpCatalog::builder();
     builder.register(McpServerRegistration::from_config(
         "图像服务".to_string(),
@@ -884,55 +882,9 @@ fn disabling_a_non_ascii_server_name_disables_the_sanitized_registration() {
     let catalog = builder.build();
 
     // The veto disables rather than removes, so the row must survive with
-    // `enabled: false` under the sanitized name — a raw name would miss it.
-    let sanitized = catalog
-        .server(&normalize_server_name("图像服务".to_string()))
-        .expect("the veto must reach the sanitized registration");
-    assert_eq!(sanitized.config.enabled, false);
-}
-
-/// `图片` and `搜索` both flatten to `__`. The name is the registration key, the
-/// disabled-rule key and the merge key, so without a discriminator the second
-/// server would silently replace the first.
-#[test]
-fn distinct_non_ascii_names_do_not_collapse_into_one_server() {
-    let mut builder = ResolvedMcpCatalog::builder();
-    for name in ["图片", "搜索", "图像服务"] {
-        builder.register(McpServerRegistration::from_config(
-            name.to_string(),
-            server("https://example.test/mcp"),
-        ));
-    }
-    let catalog = builder.build();
-
-    let mut names: Vec<String> = catalog.configured_servers().keys().cloned().collect();
-    names.sort();
-    assert_eq!(
-        names.len(),
-        3,
-        "every configured server must keep its own registration: {names:?}"
-    );
-    for name in ["图片", "搜索", "图像服务"] {
-        let sanitized = normalize_server_name(name.to_string());
-        assert!(
-            catalog.server(&sanitized).is_some(),
-            "{name} must be reachable as {sanitized}"
-        );
-    }
-}
-
-/// The suffix is derived from the configured name alone, so adding or removing
-/// another server never renames this one (tool names and approvals stay stable).
-#[test]
-fn sanitized_names_are_stable_and_hash_free_for_ascii() {
-    assert_eq!(
-        normalize_server_name("图片".to_string()),
-        normalize_server_name("图片".to_string())
-    );
-    assert_eq!(normalize_server_name("github".to_string()), "github");
-    assert_eq!(normalize_server_name("apps".to_string()), "apps");
-    assert_ne!(
-        normalize_server_name("图片".to_string()),
-        normalize_server_name("搜索".to_string())
-    );
+    // `enabled: false` under the same configured name the registration uses.
+    let disabled = catalog
+        .server("图像服务")
+        .expect("the veto must reach the configured registration");
+    assert_eq!(disabled.config.enabled, false);
 }
