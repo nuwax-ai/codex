@@ -855,12 +855,27 @@ fn path_is_present(path: &Path) -> io::Result<bool> {
 #[cfg(unix)]
 fn choose_system_file(preferred: &Path, fallback: &Path) -> io::Result<(std::path::PathBuf, bool)> {
     let preferred_exists = path_is_present(preferred)?;
-    let fallback_exists = path_is_present(fallback)?;
-    Ok(if preferred_exists {
-        (preferred.to_path_buf(), fallback_exists)
-    } else {
-        (fallback.to_path_buf(), false)
-    })
+    if preferred_exists {
+        // The old path is only consulted for the "both exist" warning here. A broken
+        // old path must not stop a valid new one from being used: report it and carry
+        // on with the file we already know exists.
+        let fallback_exists = match path_is_present(fallback) {
+            Ok(exists) => exists,
+            Err(error) => {
+                tracing::warn!(
+                    path = %fallback.display(),
+                    %error,
+                    "ignoring an unreadable fallback system configuration file"
+                );
+                false
+            }
+        };
+        return Ok((preferred.to_path_buf(), fallback_exists));
+    }
+    // The fallback is the file we will use, so its stat errors must surface; the
+    // returned flag means "both exist", which cannot be true here.
+    let _fallback_exists = path_is_present(fallback)?;
+    Ok((fallback.to_path_buf(), false))
 }
 
 #[cfg(unix)]
@@ -2282,6 +2297,25 @@ mod unit_tests {
             choose_system_file(&preferred, &fallback).expect("stat"),
             (preferred.clone(), true),
             "both present: use the fork name and report the conflict"
+        );
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_broken_fallback_does_not_block_a_valid_fork_file() -> anyhow::Result<()> {
+        let tmp = tempdir()?;
+        let preferred = tmp.path().join("nuwax-harness").join("requirements.toml");
+        let fallback = tmp.path().join("codex").join("requirements.toml");
+        std::fs::create_dir_all(preferred.parent().expect("parent"))?;
+        std::fs::create_dir_all(fallback.parent().expect("parent"))?;
+        std::fs::write(&preferred, "log_dir = \"/tmp/a\"\n")?;
+        // The obsolete path is only probed for the conflict warning.
+        std::os::unix::fs::symlink(&fallback, &fallback)?;
+
+        assert_eq!(
+            choose_system_file(&preferred, &fallback).expect("a valid file must win"),
+            (preferred.clone(), false)
         );
         Ok(())
     }
