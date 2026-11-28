@@ -98,8 +98,13 @@ const PROVIDER_ERROR_MESSAGE_MAX_CHARS: usize = 300;
 /// used to reach the user's error line and the rollout. Only a body that is not
 /// JSON at all falls back to the clipped raw text, because that is where the
 /// human sentence lives (`quota exceeded: window resets at 18:00`).
-fn provider_error_message(body_text: &str) -> Option<String> {
-    let trimmed = body_text.trim();
+/// rig appends this marker when it caps an error body at 64 KiB.
+const TRUNCATION_MARKER: &str = "[Response body truncated after 64 KiB]";
+
+fn provider_error_message(body_text: &str, headers: Option<&HeaderMap>) -> Option<String> {
+    let truncated = body_text.contains(TRUNCATION_MARKER);
+    let body = body_text.replace(TRUNCATION_MARKER, "");
+    let trimmed = body.trim();
     if trimmed.is_empty() {
         return None;
     }
@@ -137,11 +142,20 @@ fn provider_error_message(body_text: &str) -> Option<String> {
         // JSON that may contain the request we just sent.
         return None;
     }
-    // Error bodies are capped (rig keeps the first 64 KiB plus a truncation
-    // marker), so a structured response can arrive cut in half and fail to parse
-    // above. It is still JSON-shaped, not prose: falling through to the clipped
-    // raw text would echo whatever the gateway put in it.
-    if trimmed.starts_with('{') || trimmed.starts_with('[') {
+    // A structured response can arrive cut in half (rig caps error bodies) and fail
+    // to parse above. It is not prose: falling through to the clipped raw text would
+    // echo whatever the gateway put in it. Judge by the declared media type, the
+    // truncation marker, and the opening character — a JSON string body starts with
+    // `"`, which a brace check alone misses.
+    let declared_json = headers
+        .and_then(|headers| headers.get(http::header::CONTENT_TYPE))
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.to_ascii_lowercase().contains("json"));
+    let json_shaped = matches!(
+        trimmed.as_bytes().first(),
+        Some(b'{') | Some(b'[') | Some(b'"')
+    );
+    if declared_json || truncated || json_shaped {
         return None;
     }
     clip_provider_message(trimmed)
@@ -425,7 +439,7 @@ fn map_api_error_details(err: ApiError) -> CodexErr {
                     CodexErr::RetryLimit(RetryLimitReachedError {
                         status,
                         request_id: extract_request_tracking_id(headers.as_ref()),
-                        message: provider_error_message(&body_text),
+                        message: provider_error_message(&body_text, headers.as_ref()),
                     })
                 } else {
                     CodexErr::UnexpectedStatus(UnexpectedResponseError {

@@ -1181,3 +1181,47 @@ fn truncated_structured_rejection_is_not_echoed() {
         "a cut-off JSON body must not be echoed either"
     );
 }
+
+/// A structured body can be a JSON *string* rather than an object, and a truncated
+/// one has rig's marker. Neither may fall back to raw text, even when the body does
+/// not open with `{` or `[`.
+#[test]
+fn truncated_json_string_rejection_is_not_echoed() {
+    let body = "\"SECRET-PROMPT and more secret text";
+    let mut headers = http::HeaderMap::new();
+    headers.insert(
+        http::header::CONTENT_TYPE,
+        http::HeaderValue::from_static("application/json"),
+    );
+    let err = map_api_error(ApiError::Transport(TransportError::Http {
+        status: http::StatusCode::TOO_MANY_REQUESTS,
+        url: None,
+        headers: Some(headers),
+        body: Some(body.to_string()),
+        retry_after: None,
+    }));
+    assert_eq!(
+        err.to_string(),
+        "exceeded retry limit, last status: 429 Too Many Requests",
+        "a JSON body that fails to parse must not be treated as prose"
+    );
+}
+
+/// rig's truncation marker alone is enough to distrust the body, even without a
+/// declared JSON media type.
+#[test]
+fn truncated_body_marker_disables_the_prose_fallback() {
+    let body = "SECRET-PROMPT echoed back\n[Response body truncated after 64 KiB]";
+    let err = map_api_error(ApiError::Transport(TransportError::Http {
+        status: http::StatusCode::TOO_MANY_REQUESTS,
+        url: None,
+        headers: None,
+        body: Some(body.to_string()),
+        retry_after: None,
+    }));
+    assert_eq!(
+        err.to_string(),
+        "exceeded retry limit, last status: 429 Too Many Requests",
+        "a truncated body is not trustworthy prose"
+    );
+}
