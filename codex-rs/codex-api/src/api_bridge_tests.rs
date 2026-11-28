@@ -1071,10 +1071,15 @@ fn non_json_rejection_is_flattened_and_clipped() {
     }));
     let message = err.to_string();
     assert!(
-        message.starts_with("exceeded retry limit, last status: 429 Too Many Requests: Service Unavailable x"),
+        message.starts_with(
+            "exceeded retry limit, last status: 429 Too Many Requests: Service Unavailable x"
+        ),
         "{message}"
     );
-    assert!(message.ends_with('…'), "clipped text ends with an ellipsis: {message}");
+    assert!(
+        message.ends_with('…'),
+        "clipped text ends with an ellipsis: {message}"
+    );
     let detail = message
         .rsplit_once(": ")
         .map(|(_, detail)| detail)
@@ -1098,5 +1103,61 @@ fn empty_429_body_keeps_the_original_wording() {
     assert_eq!(
         err.to_string(),
         "exceeded retry limit, last status: 429 Too Many Requests"
+    );
+}
+
+/// A structured body this build does not recognize must not be echoed. A gateway
+/// can park the request it received in an arbitrary key, and that text used to land
+/// in the user's error line (and the rollout).
+#[test]
+fn unrecognized_structured_rejection_is_not_echoed() {
+    let body = r#"{"request":{"messages":[{"role":"user","content":"SECRET-PROMPT"}]},"trace_id":"abc-123"}"#;
+    let err = map_api_error(ApiError::Transport(TransportError::Http {
+        status: http::StatusCode::TOO_MANY_REQUESTS,
+        url: None,
+        headers: None,
+        body: Some(body.to_string()),
+        retry_after: None,
+    }));
+    assert_eq!(
+        err.to_string(),
+        "exceeded retry limit, last status: 429 Too Many Requests",
+        "the request echoed by the gateway must not reach the error line"
+    );
+}
+
+/// Gateways that spell the explanation `detail` (FastAPI, several Chinese
+/// gateways) still get their sentence through.
+#[test]
+fn structured_detail_field_is_used() {
+    let body = r#"{"detail":"upstream quota exhausted"}"#;
+    let err = map_api_error(ApiError::Transport(TransportError::Http {
+        status: http::StatusCode::TOO_MANY_REQUESTS,
+        url: None,
+        headers: None,
+        body: Some(body.to_string()),
+        retry_after: None,
+    }));
+    assert_eq!(
+        err.to_string(),
+        "exceeded retry limit, last status: 429 Too Many Requests: upstream quota exhausted"
+    );
+}
+
+/// An Anthropic-shaped `error.type` is the last recognized field before the
+/// status line alone.
+#[test]
+fn structured_error_type_is_the_last_named_fallback() {
+    let body = r#"{"type":"error","error":{"type":"rate_limit_error"}}"#;
+    let err = map_api_error(ApiError::Transport(TransportError::Http {
+        status: http::StatusCode::TOO_MANY_REQUESTS,
+        url: None,
+        headers: None,
+        body: Some(body.to_string()),
+        retry_after: None,
+    }));
+    assert_eq!(
+        err.to_string(),
+        "exceeded retry limit, last status: 429 Too Many Requests: type: rate_limit_error"
     );
 }

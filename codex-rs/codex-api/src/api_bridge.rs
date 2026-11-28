@@ -92,12 +92,12 @@ const PROVIDER_ERROR_MESSAGE_MAX_CHARS: usize = 300;
 /// 429 with `{"error":{"code":"1316","message":"已达到 5 小时使用上限…"}}`, which
 /// matches no OpenAI error `type`. Upstream then kept only the HTTP status, so
 /// the user could not tell a provider quota rejection from a harness bug.
-/// This reads the human-readable text without interpreting the vendor:
-/// `error.message` → top-level `message` → `error.code` → the raw body.
 ///
-/// Only the message is used, never the whole JSON: a provider body can echo the
-/// request. Redaction is deliberately not applied here — the raw body already
-/// reaches the bridge's error log — so this only widens what the user sees.
+/// A structured body is read field by field and **never** echoed as a whole: a
+/// gateway can park the request it received in an unrelated key, and that text
+/// used to reach the user's error line and the rollout. Only a body that is not
+/// JSON at all falls back to the clipped raw text, because that is where the
+/// human sentence lives (`quota exceeded: window resets at 18:00`).
 fn provider_error_message(body_text: &str) -> Option<String> {
     let trimmed = body_text.trim();
     if trimmed.is_empty() {
@@ -105,30 +105,37 @@ fn provider_error_message(body_text: &str) -> Option<String> {
     }
     if let Ok(parsed) = serde_json::from_str::<Value>(trimmed) {
         let error = parsed.get("error");
-        if let Some(message) = error
-            .and_then(|error| error.get("message"))
-            .and_then(Value::as_str)
-            .filter(|message| !message.trim().is_empty())
+        let text_fields = [
+            error.and_then(|error| error.get("message")),
+            error.and_then(|error| error.get("detail")),
+            parsed.get("detail"),
+            parsed.get("message"),
+        ];
+        if let Some(message) = text_fields
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .find(|message| !message.trim().is_empty())
         {
             return clip_provider_message(message);
         }
-        if let Some(code) = error
-            .and_then(|error| error.get("code"))
-            .and_then(|code| {
-                code.as_str()
-                    .map(str::to_string)
-                    .or_else(|| code.as_i64().map(|code| code.to_string()))
-            })
-        {
+        if let Some(code) = error.and_then(|error| error.get("code")).and_then(|code| {
+            code.as_str()
+                .map(str::to_string)
+                .or_else(|| code.as_i64().map(|code| code.to_string()))
+        }) {
             return clip_provider_message(&format!("code: {code}"));
         }
-        if let Some(message) = parsed
-            .get("message")
+        if let Some(kind) = error
+            .and_then(|error| error.get("type"))
             .and_then(Value::as_str)
-            .filter(|message| !message.trim().is_empty())
+            .filter(|kind| !kind.trim().is_empty())
         {
-            return clip_provider_message(message);
+            return clip_provider_message(&format!("type: {kind}"));
         }
+        // Nothing recognizable: the status line alone is better than a blob of
+        // JSON that may contain the request we just sent.
+        return None;
     }
     clip_provider_message(trimmed)
 }
