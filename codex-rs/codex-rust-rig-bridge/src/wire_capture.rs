@@ -85,13 +85,30 @@ impl Capture {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|elapsed| elapsed.as_millis())
             .unwrap_or_default();
-        let run = RUN_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-        let run_dir = dir.join(format!("{millis}-{}-{run}", std::process::id()));
-        create_private_dir_all(&run_dir)?;
-        Ok(Self {
-            dir: run_dir,
-            sequence: AtomicU64::new(0),
-        })
+        // The root is the caller's directory and may already exist; each run directory
+        // must be ours alone, so a collision moves on instead of reusing it.
+        std::fs::create_dir_all(&dir)?;
+        for _ in 0..16 {
+            let run = RUN_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+            let run_dir = dir.join(format!("{millis}-{}-{run}", std::process::id()));
+            match create_private_dir(&run_dir) {
+                Ok(()) => {
+                    return Ok(Self {
+                        dir: run_dir,
+                        sequence: AtomicU64::new(0),
+                    });
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => return Err(error),
+            }
+        }
+        Err(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            format!(
+                "could not create a private capture directory under {}",
+                dir.display()
+            ),
+        ))
     }
 
     /// Opens one capture slot for a request: writes the request body and its
@@ -165,11 +182,13 @@ impl Capture {
     }
 }
 
-/// Creates a directory tree readable only by its owner (mode bits are ignored where the
-/// platform has none).
-fn create_private_dir_all(path: &Path) -> std::io::Result<()> {
+/// Creates a directory readable only by its owner.
+///
+/// Not recursive and **not** tolerant of an existing path: `DirBuilder::mode` only
+/// applies to directories this call creates, so reusing a directory that someone
+/// else made (or a crashed run left behind) would silently keep its permissions.
+fn create_private_dir(path: &Path) -> std::io::Result<()> {
     let mut builder = std::fs::DirBuilder::new();
-    builder.recursive(true);
     #[cfg(unix)]
     {
         use std::os::unix::fs::DirBuilderExt;
@@ -178,11 +197,15 @@ fn create_private_dir_all(path: &Path) -> std::io::Result<()> {
     builder.create(path)
 }
 
-/// Creates a file readable only by its owner. Captures carry prompts and provider
-/// credentials in headers, so the default `0644` under a `022` umask is too wide.
+/// Creates a new file readable only by its owner.
+///
+/// `create_new` on purpose: truncating an existing file would keep whatever
+/// permissions it already had, and captures carry prompts and provider credentials
+/// in their headers. Windows has no `mode`; the file inherits the ACL of the run
+/// directory, so that directory is what has to be private there.
 fn create_private(path: &Path) -> std::io::Result<File> {
     let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
+    options.write(true).create_new(true);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;

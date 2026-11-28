@@ -210,3 +210,26 @@ fn run_directories_and_files_are_owner_only() {
         & 0o777;
     assert_eq!(file_mode, 0o600, "captures must not be world readable");
 }
+
+/// Reusing an existing path would keep its permissions (`DirBuilder::mode` and
+/// `OpenOptions::mode` only apply to what this process creates), so both are
+/// exclusive.
+#[test]
+fn capture_paths_are_never_reused() {
+    let dir = temp_dir("exclusive");
+
+    let existing_dir = dir.join("existing-run");
+    std::fs::create_dir(&existing_dir).expect("seed dir");
+    let dir_error = super::create_private_dir(&existing_dir).expect_err("must not adopt a dir");
+    assert_eq!(dir_error.kind(), std::io::ErrorKind::AlreadyExists);
+
+    let existing_file = dir.join("0001-anthropic.request.body");
+    std::fs::write(&existing_file, b"seeded").expect("seed file");
+    let file_error = super::create_private(&existing_file).expect_err("must not truncate a file");
+    assert_eq!(file_error.kind(), std::io::ErrorKind::AlreadyExists);
+    assert_eq!(
+        std::fs::read(&existing_file).expect("survives"),
+        b"seeded",
+        "the seeded file must keep its contents"
+    );
+}
