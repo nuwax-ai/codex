@@ -14,6 +14,8 @@ pub(crate) async fn send_streaming(
     request: Request<Bytes>,
     retry: Option<&RetryConfig>,
     recorder: &crate::FinalRequestRecorder,
+    // Wire name for the debug capture's file names; `None` disables capture.
+    capture_protocol: Option<&'static str>,
 ) -> Result<StreamingResponse, Error> {
     // rig's HttpClientExt lives on rig-reqwest's client wrapper; the
     // decorator's pooled reqwest client is wrapped per attempt (cheap clone).
@@ -31,9 +33,22 @@ pub(crate) async fn send_streaming(
         *request.headers_mut() = parts.headers.clone();
         *request.extensions_mut() = parts.extensions.clone();
         crate::request_capture::record(recorder, &request)?;
+        // One capture slot per attempt: a 429 that a later attempt recovers from is
+        // exactly the evidence rate-limit debugging needs, and the success-only slot
+        // the transport used to take threw it away.
+        let wire_slot = capture_protocol
+            .and_then(|protocol| crate::wire_capture::begin_for(&request, protocol));
         match client.send_streaming(request).await {
-            Ok(response) => return Ok(response),
+            Ok(response) => {
+                return Ok(match wire_slot {
+                    Some(slot) => response.map(|body| slot.tee_stream(body)),
+                    None => response,
+                });
+            }
             Err(error) => {
+                if let Some(slot) = &wire_slot {
+                    slot.record_error(&error.to_string());
+                }
                 let Some(policy) = &policy else {
                     return Err(error);
                 };

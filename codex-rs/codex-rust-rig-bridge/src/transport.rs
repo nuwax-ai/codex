@@ -484,25 +484,22 @@ impl HttpClientExt for RigHttpClient {
                 None
             };
             budget.check_body(request.body().len(), image_costs)?;
-            // Debug-only: capture the bytes this attempt sends and receives.
-            let wire_slot =
-                crate::wire_capture::begin_for(&request, wire_protocol_name(self.protocol));
+            // Debug-only capture happens per attempt inside the retry loop, so a
+            // recovered failure is still on disk.
+            let capture_protocol =
+                crate::wire_capture::enabled().map(|_| wire_protocol_name(self.protocol));
             let response = match crate::request_retry::send_streaming(
                 &self.inner,
                 request,
                 self.retry.as_ref(),
                 &self.final_request_recorder,
+                capture_protocol,
             )
             .await
             .map_err(sanitize_error)
             {
                 Ok(response) => response,
-                Err(error) => {
-                    if let Some(slot) = &wire_slot {
-                        slot.record_error(&error.to_string());
-                    }
-                    return Err(error);
-                }
+                Err(error) => return Err(error),
             };
             // Compatible gateways may expose only a trace/log correlation ID.
             // Keep canonical request IDs first; this never replaces the model's
@@ -526,10 +523,6 @@ impl HttpClientExt for RigHttpClient {
             Ok(response.map(move |body| {
                 let body = Box::pin(body.map(|chunk| chunk.map_err(sanitize_error)))
                     as rig_core::http_client::BoxedStream;
-                let body = match &wire_slot {
-                    Some(slot) => slot.tee_stream(body),
-                    None => body,
-                };
                 match self.protocol {
                     // Responses passthrough consumes the raw SSE bytes with
                     // codex-api's decoder and its own strict terminal policy;

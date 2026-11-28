@@ -1,8 +1,10 @@
 //! Debug-only capture of the model wire, for a developer's own machine.
 //!
 //! Enable with `NUWAX_RIG_WIRE_CAPTURE_DIR=<dir>` (the fork's namespace; the
-//! older `CODEX_RIG_WIRE_CAPTURE_DIR` still works as an alias). Every model
-//! request then leaves three files there, named by a process-wide sequence number:
+//! older `CODEX_RIG_WIRE_CAPTURE_DIR` still works as an alias). Each process gets
+//! its own `<dir>/<epoch>-<pid>/` run directory — two processes sharing one value
+//! must not overwrite each other's evidence — and every model request leaves three
+//! files there, named by that process's sequence number:
 //!
 //! ```text
 //! 0001-anthropic.request.json   method, url, headers, body (parsed when JSON)
@@ -22,6 +24,7 @@
 
 use std::fs::File;
 use std::io::Write;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -73,9 +76,20 @@ pub(crate) struct Capture {
 
 impl Capture {
     pub(crate) fn at(dir: PathBuf) -> std::io::Result<Self> {
-        std::fs::create_dir_all(&dir)?;
+        // One run directory per process: two harness processes pointed at the same
+        // value would otherwise both start at 0001 and overwrite each other.
+        // Second-resolution time alone is not unique: a test (or a host that restarts the
+        // bridge quickly) can build two captures inside one second.
+        static RUN_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+        let millis = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_millis())
+            .unwrap_or_default();
+        let run = RUN_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        let run_dir = dir.join(format!("{millis}-{}-{run}", std::process::id()));
+        create_private_dir_all(&run_dir)?;
         Ok(Self {
-            dir,
+            dir: run_dir,
             sequence: AtomicU64::new(0),
         })
     }
@@ -96,7 +110,7 @@ impl Capture {
         let json_path = stem.with_extension("request.json");
         let response_path = stem.with_extension("response.sse");
 
-        if let Err(error) = std::fs::write(&body_path, body) {
+        if let Err(error) = write_private(&body_path, body) {
             tracing::warn!(
                 path = %body_path.display(),
                 %error,
@@ -119,7 +133,7 @@ impl Capture {
                 "response": response_path.display().to_string(),
             },
         });
-        if let Err(error) = std::fs::write(&json_path, format!("{summary:#}\n")) {
+        if let Err(error) = write_private(&json_path, format!("{summary:#}\n").as_bytes()) {
             tracing::warn!(
                 path = %json_path.display(),
                 %error,
@@ -129,7 +143,7 @@ impl Capture {
 
         // Keep the file open for the whole response: chunks arrive over time
         // and this slot is the only writer.
-        let file = match File::create(&response_path) {
+        let file = match create_private(&response_path) {
             Ok(file) => file,
             Err(error) => {
                 tracing::warn!(
@@ -149,6 +163,38 @@ impl Capture {
             }),
         }))
     }
+}
+
+/// Creates a directory tree readable only by its owner (mode bits are ignored where the
+/// platform has none).
+fn create_private_dir_all(path: &Path) -> std::io::Result<()> {
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(path)
+}
+
+/// Creates a file readable only by its owner. Captures carry prompts and provider
+/// credentials in headers, so the default `0644` under a `022` umask is too wide.
+fn create_private(path: &Path) -> std::io::Result<File> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options.open(path)
+}
+
+/// Writes a whole file with owner-only permissions, replacing any earlier copy.
+fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let mut file = create_private(path)?;
+    file.write_all(bytes)
 }
 
 /// Per-response byte cap. A runaway stream would otherwise fill the disk of the machine
